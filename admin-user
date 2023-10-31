@@ -13,21 +13,12 @@ mydb = mysql.connector.connect(
 # Create a cursor for executing SQL queries
 cursor = mydb.cursor()
 
-
-
-admin_accounts = {
-    "Dra.Dalusung@gmail.com": "trisha",
-    "Dra.Isip@gmail.com": "nykhole",
-    "Dra.Festejo@gmail.com": "chloie",
-    "Dr.Sutare@gmail.com": "aldrin"
-}
 # Create a dictionary of admin accounts
-def admin_window():  
-    admin_accounts = {
-        "trisha@gmail.com": "trisha",
-        "nykhole@gmail.com": "nykhole",
-        "chloie@gmail.com": "chloie",
-        "sutare@gmail.com": "sutare",
+admin_accounts = {
+    "trisha@gmail.com": "trisha",
+    "nykhole@gmail.com": "nykhole",
+    "chloie@gmail.com": "chloie",
+    "sutare@gmail.com": "sutare",
 }
 
 # Function to insert a new user into the database during signup
@@ -50,6 +41,36 @@ def check_login_credentials(email, password):
     return result is not None
 
 login_window = None
+
+def create_admin_window():
+    # Create the admin window
+    admin_window = tk.Toplevel(root)
+    admin_window.title("Admin Window")
+
+    # Create a frame for displaying user accounts and records
+    admin_frame = tk.Frame(admin_window, borderwidth=2, relief="ridge", padx=10, pady=10)
+    admin_frame.pack(padx=20, pady=20)
+
+    # Add a label to display user accounts and records
+    user_accounts_label = tk.Label(admin_frame, text="User Accounts and Records", font=("Times", "16", "bold"))
+    user_accounts_label.pack()
+
+    # Query the database to retrieve user accounts and records
+    query = "SELECT * FROM users"
+    cursor.execute(query)
+    user_accounts = cursor.fetchall()
+
+    # Create a text widget to display user accounts and records
+    text_widget = tk.Text(admin_frame, height=10, width=50)
+    text_widget.pack()
+
+    # Insert user accounts and records into the text widget
+    for user_account in user_accounts:
+        text_widget.insert(tk.END, f"Username: {user_account[0]}\nEmail: {user_account[1]}\nPassword: {user_account[2]}\n\n")
+
+    # Create a button to go back to the main window
+    back_button = tk.Button(admin_frame, text="Back to Main", command=admin_window.destroy)
+    back_button.pack()
 
 def user_admin_selection():
     global selection_window
@@ -128,7 +149,6 @@ def create_signup_box():
     create_acc_button = tk.Button(signup_box, text="Create Account", command=signup)
     create_acc_button.pack(pady=10)
 
-
 def create_admin_login_box():
     # Admin login code (similar to user login)
     global admin_email_entry, admin_password_entry
@@ -155,7 +175,7 @@ def admin_login():
 
     # Check if the entered credentials match an admin account
     if admin_email in admin_accounts and admin_accounts[admin_email] == admin_password:
-        admin_window()
+        create_admin_window()  # Show the admin window
     else:
         messagebox.showerror("Admin Login Failed", "Invalid admin email or password")
 
@@ -182,8 +202,7 @@ def signup():
         else:
             messagebox.showerror("Signup Failed", "Failed to create an account. Please try again.")
     else:
-        messagebox.showerror("Invalid Information", "Please fill in all the informations needed.")
-
+        messagebox.showerror("Invalid Information", "Please fill in all the information needed.")
 
 def appointment_window():
     # Create an appointment frame within the main window
@@ -256,7 +275,7 @@ def appointment_window():
         "Dra. Festejo": ["10:00 AM - 11:00 AM", "3:00 PM - 4:00 PM"],
         "Dra. Isip": ["7:00 AM - 8:00 AM", "5:00 PM - 6:00 PM"],
         "Dr. Sutare": ["11:00 AM - 12:00 PM", "7:00 PM - 8:00 PM"],
-        }
+    }
 
     # Dictionary to store appointments
     appointments = {}
@@ -302,20 +321,6 @@ def appointment_window():
 def show_main_window():
     # Show the main window again
     root.deiconify()
-
-# Create the main window
-root = tk.Tk()
-root.geometry("700x500")
-root.title("Hospital Management System")
-
-
-# Load and display the background image
-#background_image = Image.open("E:\Final Project\super final\download.jpg")
-#background_image = background_image.resize((700, 500), Image.Resampling.NEAREST)
-#background_photo = ImageTk.PhotoImage(background_image)
-
-#background_label = tk.Label(root, image=background_photo)
-#background_label.place(x=0, y=0, relwidth=1, relheight=1)
 
 # Create the main window
 root = tk.Tk()
