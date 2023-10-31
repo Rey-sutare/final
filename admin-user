@@ -16,10 +16,10 @@ cursor = mydb.cursor()
 
 
 admin_accounts = {
-    "trisha@gmail.com": "trisha",
-    "nykhole@gmail.com": "nykhole",
-    "chloie@gmail.com": "chloie",
-    "sutare@gmail.com": "sutare",
+    "Dra.Dalusung@gmail.com": "trisha",
+    "Dra.Isip@gmail.com": "nykhole",
+    "Dra.Festejo@gmail.com": "chloie",
+    "Dr.Sutare@gmail.com": "aldrin"
 }
 # Create a dictionary of admin accounts
 def admin_window():  
