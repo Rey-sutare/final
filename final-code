@@ -1,263 +1,558 @@
-from tkinter import *
-from tkinter import ttk
-import random
-import time
-import datetime
+import tkinter as tk
 from tkinter import messagebox
+from PIL import Image, ImageTk
 import mysql.connector
+from tkinter.simpledialog import askstring
+
+bg_color = "#E0E0E0"  # Light gray
+mydb = mysql.connector.connect(
+    host="localhost",
+    port=3306,
+    user="root",
+    password="",
+    database="hms"
+)
 
 
-class HMS:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Hospital Management System")
-        self.root.geometry("1540x800+0+0")
+# Create a cursor for executing SQL queries
+cursor = mydb.cursor()
+
+# Function to insert a new user into the database during signup
+def insert_users_into_db(username, email, password):
+    try:
+        query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
+        cursor.execute(query, (username, email, password))
+        mydb.commit()
+        return True
+    except Exception as e:
+        print("Error while inserting into the database:", str(e))
+        mydb.rollback()
+        return False
 
 
-        self.Nameoftablets=StringVar()
-        self.ref=StringVar()
-        self.Dose=StringVar()
-        self.NumberofTablets=StringVar()
-        self.Lot=StringVar()
-        self.Issuedate=StringVar()
-        self.ExpDate=StringVar()
-        self.DailyDose=StringVar()
-        self.sideEffect=StringVar()
-        self.FurtherInformation=StringVar()
-        self.StorageAdvice=StringVar()
-        self.DrivingUsingMachine=StringVar()
-        self.HowToUseMedication=StringVar()
-        self.PatientId=StringVar()
-        self.nhsNumber=StringVar()
-        self.PatientName=StringVar()
-        self.DateOfBirth=StringVar()
-        self.PatientAddress=StringVar()
+def insert_admins_into_db(email, password):
+    try:
+        query = "INSERT INTO admins (email, password) VALUES (%s, %s)"
+        cursor.execute(query, (email, password))
+        mydb.commit()
+        return True
+    except Exception as e:
+        print("Error while inserting admin credentials:", str(e))
+        mydb.rollback()
+        return False
+
+# Function to validate login credentials against the database
+
+def check_login_credentials(email, password):
+    query = "SELECT * FROM users WHERE email = %s AND password = %s"
+    cursor.execute(query, (email, password))
+    result = cursor.fetchone()
+    return result is not None
 
 
-        lbltitle = Label(self.root, bd=20, relief=RIDGE, text="HOSPITAL MANAGEMENT SYSTEM", fg="red", bg="white", font=("times new roman", 50, "bold"))
-        lbltitle.pack(side=TOP, fill=X)
+def check_admin_login_credentials(email, password):
+        try:
+            query = "SELECT * FROM admins WHERE email = %s AND password = %s"
+            cursor.execute(query, (email, password))
+            result = cursor.fetchone()
+            if result:
+                return True
+            else:
+                print("Admin login failed: Invalid email or password")
+                return False
+        except Exception as e:
+            print("Error while checking admin login credentials:", str(e))
+            return False
 
-        # ==============================Dataframe==============================
-        DataFrame=Frame(self.root, bd=20, padx=20, relief=RIDGE)
-        DataFrame.place(x=0, y=130, width=1530, height=400)
+def get_appointments_for_doctor(doctor_id):
+    try:
+        query = "SELECT * FROM doctorappointment WHERE doctor_id = %s"
+        cursor.execute(query, (doctor_id,))
+        appointments = cursor.fetchall()
+        return appointments
+    
+    except Exception as e:
+        print("Error while retrieving doctor appointments:", str(e))
+        return None
 
-        DataFrameLeft=LabelFrame(DataFrame, bd=10, relief=RIDGE, padx=10,
-                                                   font=("times new roman", 12, "bold"), text="Patient Information")
-        DataFrameLeft.place(x=0, y=5, width=980, height=350)
-
-        DataFrameRight=LabelFrame(DataFrame, bd=10, relief=RIDGE, padx=10,
-                                                   font=("times new roman", 12, "bold"), text="Prescription")
-        DataFrameRight.place(x=980, y=5, width=460, height=350)
-
-        # ==============================Buttonsframe==============================
-
-        Buttonframe=Frame(self.root, bd=20, relief=RIDGE)
-        Buttonframe.place(x=0, y=530, width=1450, height=70)
-
-        # ==============================Detailsframe==============================
-
-        Detailsframe=Frame(self.root, bd=20, relief=RIDGE)
-        Detailsframe.place(x=0, y=600, width=1450, height=140)
-
-        # ==============================DataframeLeft==============================
-
-        lblNameTablet=Label(DataFrameLeft, text="Names of Tablet:", font=("arial", 12, "bold"), padx=2, pady=6)
-        lblNameTablet.grid(row=0, column=0, sticky=W)
-
-        comNametablet=ttk.Combobox(DataFrameLeft, textvariable=self.Nameoftablets, state="readonly",
-                                                        font=("arial", 12, "bold"), width=33)
-
-        comNametablet["values"]=("Nice", "Corona Vaccine", "Acetaminophan", "Adderall", "Amlodopine", "Ativan")
-        comNametablet.current(0)
-        comNametablet.grid(row=0, column=1)
-
-        lblref=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Reference No:", padx=2)
-        lblref.grid(row=1, column=0, sticky=W)
-        txtref=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.ref, width=35)
-        txtref.grid(row=1, column=1)
+def save_appointment_to_summary(appointment_info):
+        try:
+            query = "INSERT INTO appointments (Name, Age, Contact_Number, Sex, Doctor, Appointment_Date, Reason, Amount) " \
+                    "VALUES (%(Name)s, %(Age)s, %(Contact_Number)s, %(Sex)s, %(Doctor)s, %(Appointment_Date)s, %(Reason)s, %(Amount)s)"
+            cursor.execute(query, appointment_info)
+            mydb.commit()
+            return True
+    
+        except Exception as e:
+            print("Error while inserting into the database:", str(e))
+            mydb.rollback()
+            return False
         
-        lblDose=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Dose:", padx=2, pady=4)
-        lblDose.grid(row=2, column=0, sticky=W)
-        txtDose=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.Dose, width=35)
-        txtDose.grid(row=2, column=1)
+login_window = None
 
-        lblNooftablets=Label(DataFrameLeft, font=("arial", 12, "bold"), text="No of Tablets:", padx=2, pady=6)
-        lblNooftablets.grid(row=3, column=0, sticky=W)
-        txtNooftablets=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.NumberofTablets, width=35)
-        txtNooftablets.grid(row=3, column=1)
+################################################################################################
+def create_login_box():
+    global email_entry, password_entry, login_window, signup_box  # Make signup_box global
+    login_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10)
+    login_box.pack(padx=20, pady=20)
 
-        lblLot=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Lot:", padx=2, pady=6)
-        lblLot.grid(row=4, column=0, sticky=W)
-        txtLot=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.Lot, width=35)
-        txtLot.grid(row=4, column=1)
+    email_label = tk.Label(login_box, text="Email Address:")
+    email_label.pack(anchor="w")
+    email_entry = tk.Entry(login_box)
+    email_entry.pack(fill="x", padx=10, pady=5)
 
-        lblissueDate=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Issue Date:", padx=2, pady=6)
-        lblissueDate.grid(row=5, column=0, sticky=W)
-        txtissueDate=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.Issuedate, width=35)
-        txtissueDate.grid(row=5, column=1)
+    password_label = tk.Label(login_box, text="Password:")
+    password_label.pack(anchor="w")
+    password_entry = tk.Entry(login_box, show="*")
+    password_entry.pack(fill="x", padx=10, pady=5)
 
-        lblExpDate=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Exp Date:", padx=2, pady=6)
-        lblExpDate.grid(row=6, column=0, sticky=W)
-        txtExpDate=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.ExpDate, width=35)
-        txtExpDate.grid(row=6, column=1)
+    login_button = tk.Button(login_box, text="Login", command=login)
+    login_button.pack(pady=10)
 
-        lblDailyDose=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Daily Dose:", padx=2, pady=4)
-        lblDailyDose.grid(row=7, column=0, sticky=W)
-        txtDailyDose=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.DailyDose, width=35)
-        txtDailyDose.grid(row=7, column=1)
+    admin_login_button = tk.Button(root, borderwidth=2, relief="ridge", padx=10, pady=10, bg= 'lightgreen', text="Login as Admin", command=create_admin_login_box)
+    admin_login_button.pack(pady=10)
 
-        lblSideEffect=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Side Effect:", padx=2, pady=6)
-        lblSideEffect.grid(row=8, column=0, sticky=W)
-        txtSideEffect=Entry(DataFrameLeft, font=("arial", 13, "bold"), textvariable=self.sideEffect, width=35)
-        txtSideEffect.grid(row=8, column=1)
+    # Hide the signup_box if it exists
+    if signup_box:
+        signup_box.pack_forget()
 
-        lblFurtherinfo=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Further Information:", padx=2)
-        lblFurtherinfo.grid(row=0, column=2, sticky=W)
-        txtFurtherinfo=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.FurtherInformation, width=35)
-        txtFurtherinfo.grid(row=0, column=3)
+    
+    # Initialize the signup_box as None
+    signup_box = None
 
-        lblDrivingMachine=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Blood Pressure:", padx=2, pady=6)
-        lblDrivingMachine.grid(row=1, column=2, sticky=W)
-        txtDrivingMachine=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.DrivingUsingMachine, width=35)
-        txtDrivingMachine.grid(row=1, column=3)
 
-        lblStorage=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Storage Advice:", padx=2, pady=6)
-        lblStorage.grid(row=2, column=2, sticky=W)
-        txtStorage=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.StorageAdvice, width=35)
-        txtStorage.grid(row=2, column=3)
+def create_signup_box():
+    global username_entry, email_entry, password_entry, signup_box
+    signup_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10,)
+    signup_box.pack(padx=20, pady=20)
 
-        lblHowToUseMedication=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Medication:", padx=2, pady=6)
-        lblHowToUseMedication.grid(row=3, column=2, sticky=W)
-        txtHowToUseMedication=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.HowToUseMedication, width=35)
-        txtHowToUseMedication.grid(row=3, column=3, sticky=W)
+    username_label = tk.Label(signup_box, text="Username:", anchor="w")
+    username_label.pack()
+    username_entry = tk.Entry(signup_box)
+    username_entry.pack(fill="x", padx=10, pady=5)
 
-        lblPatientId=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Patient Id:", padx=2, pady=6)
-        lblPatientId.grid(row=4, column=2, sticky=W)
-        txtPatientId=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.PatientId, width=35)
-        txtPatientId.grid(row=4, column=3)
+    email_label = tk.Label(signup_box, text="Email Address:", anchor="w")
+    email_label.pack()
+    email_entry = tk.Entry(signup_box)
+    email_entry.pack(fill="x", padx=10, pady=5)
 
-        lblNhsNumber=Label(DataFrameLeft, font=("arial", 12, "bold"), text="NHS Number:", padx=2, pady=6)
-        lblNhsNumber.grid(row=5, column=2, sticky=W)
-        txtNhsNumber=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.nhsNumber, width=35)
-        txtNhsNumber.grid(row=5, column=3)
+    password_label = tk.Label(signup_box, text="Password:", anchor="w")
+    password_label.pack()
+    password_entry = tk.Entry(signup_box, show="*")
+    password_entry.pack(fill="x", padx=10, pady=5)
 
-        lblPatientname=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Patient Name:", padx=2, pady=6)
-        lblPatientname.grid(row=6, column=2, sticky=W)
-        txtPatientname=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.PatientName, width=35)
-        txtPatientname.grid(row=6, column=3)
+    create_acc_button = tk.Button(signup_box, text="Create Account",bg= 'lightgreen', command=signup)
+    create_acc_button.pack(pady=10)
 
-        lblDateofBirth=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Date of Birth:", padx=2, pady=6)
-        lblDateofBirth.grid(row=7, column=2, sticky=W)
-        txtDateofBirth=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.DateOfBirth, width=35)
-        txtDateofBirth.grid(row=7, column=3)
+    login_page_button = tk.Button(root, text="Already have an account? Log in here.", background='lightgreen', command=create_login_box)
+    login_page_button.pack()
 
-        lblPatientAddress=Label(DataFrameLeft, font=("arial", 12, "bold"), text="Patient Address:", padx=2, pady=6)
-        lblPatientAddress.grid(row=8, column=2, sticky=W)
-        txtPatientAddress=Entry(DataFrameLeft, font=("arial", 12, "bold"), textvariable=self.PatientAddress, width=35)
-        txtPatientAddress.grid(row=8, column=3)
 
-        # ==============================DataframeRight==============================
-        self.txtPrescription=Text(DataFrameRight, font=("arial", 12, "bold"), width=45, height=16, padx=2, pady=6)
-        self.txtPrescription.grid(row=0, column=0)
+    
 
-        # ==============================Buttons==============================
-        btnPrescription=Button(Buttonframe, text="Prescription", bg="black", fg="white", font=("arial", 12, "bold"), width=23, padx=2, pady=6)
-        btnPrescription.grid(row=0, column=0)
+def create_admin_login_box():
+    global admin_email_entry, admin_password_entry, admin_login_window
+    admin_login_window = tk.Toplevel(root)
+    admin_login_window.geometry("300x150")
+    admin_login_window.title("Login as Admin")
 
-        btnPrescriptionData=Button(Buttonframe, text="Prescription Data", bg="black", fg="white", font=("arial", 12, "bold"), width=23, padx=2, pady=6)
-        btnPrescriptionData.grid(row=0, column=1)
+    admin_email_label = tk.Label(admin_login_window, text="Admin Email:")
+    admin_email_label.pack(anchor="w")
+    admin_email_entry = tk.Entry(admin_login_window)
+    admin_email_entry.pack(fill="x", padx=10, pady=5)
 
-        btnUpdate=Button(Buttonframe, text="Update", bg="black", fg="white", font=("arial", 12, "bold"), width=23, padx=2, pady=6)
-        btnUpdate.grid(row=0, column=2)
+    admin_password_label = tk.Label(admin_login_window, text="Admin Password:")
+    admin_password_label.pack(anchor="w")
+    admin_password_entry = tk.Entry(admin_login_window, show="*")
+    admin_password_entry.pack(fill="x", padx=10, pady=5)
 
-        btnDelete=Button(Buttonframe, text="Delete", bg="black", fg="white", font=("arial", 12, "bold"), width=23, padx=2, pady=6)
-        btnDelete.grid(row=0, column=3)
+    admin_login_button = tk.Button(admin_login_window, text="Login", bg= 'lightgreen', command=admin_accounts)
+    admin_login_button.pack(pady=10)
 
-        btnClear=Button(Buttonframe, text="Clear", bg="black", fg="white", font=("arial", 12, "bold"), width=23, padx=2, pady=6)
-        btnClear.grid(row=0, column=4)
 
-        btnExit=Button(Buttonframe, text="Exit", bg="black", fg="white", font=("arial", 12, "bold"), width=23, padx=2, pady=6)
-        btnExit.grid(row=0, column=5)
+def create_admin_window():
+    # Create the admin window
+    admin_window = tk.Toplevel(root)
+    admin_window.title("Admin Window")
 
-        # ==============================Table==============================
-        # ===============Scrollbar===============
-        scroll_x=ttk.Scrollbar(Detailsframe, orient=HORIZONTAL)
-        scroll_y=ttk.Scrollbar(Detailsframe, orient=VERTICAL)
-        self.hms_table=ttk.Treeview(Detailsframe, column=("nameoftable", "ref", "dose", "nooftablets", "lot", "issuedate",
-                                    "expdate", "dailydose", "storage", "nhsnumber", "pname", "dob", "address"), xscrollcommand=scroll_x.set, yscrollcommand=scroll_y.set)
-        scroll_x.pack(side=BOTTOM, fill=X)
-        scroll_y.pack(side=RIGHT, fill=Y)
+    # Create a frame for displaying user accounts and records
+    admin_frame = tk.Frame(admin_window, borderwidth=2, relief="ridge", padx=10, pady=10)
+    admin_frame.pack(padx=20, pady=20)
 
-        scroll_x=ttk.Scrollbar(command=self.hms_table.xview)
-        scroll_y=ttk.Scrollbar(command=self.hms_table.yview)
+    # Add a label to display user accounts and records
+    user_accounts_label = tk.Label(admin_frame, text="User Accounts and Records", font=("Times", "16", "bold"))
+    user_accounts_label.pack()
+
+    # Query the database to retrieve user accounts and records
+    query = "SELECT * FROM users"
+    cursor.execute(query)
+    user_accounts = cursor.fetchall()
+
+    # Create a text widget to display user accounts and records
+    text_widget = tk.Text(admin_frame, height=10, width=50)
+    text_widget.pack()
+
+    # Insert user accounts and records into the text widget
+    for user_account in user_accounts:
+        text_widget.insert(tk.END, f"Username: {user_account[0]}\nEmail: {user_account[1]}\nPassword: {user_account[2]}\n\n")
+    #summary of appointments
+    
+    #logout button
+    logout_button = tk.Button(admin_window, text="Log Out", command=admin_logout)
+    logout_button.pack()
+
+    # Create a button to go back to the main window
+    back_button = tk.Button(admin_frame, text="Back to Main", command=admin_window.destroy)
+    back_button.pack()
+
+
+
+def login():
+    global email_entry, password_entry
+    email = email_entry.get()
+    password = password_entry.get()
+    if email and password:
+        if check_login_credentials(email, password):
+            appointment_window()
+        else:
+            messagebox.showerror("Login Failed", "Invalid email or password")
+    else:
+        messagebox.showerror("Invalid Information", "Please fill in both email and password.")
+
+def signup():
+    global username_entry, email_entry, password_entry
+    username = username_entry.get()
+    email = email_entry.get()
+    password = password_entry.get()
+    if username and email and password:
+        if insert_users_into_db(username, email, password):
+            messagebox.showinfo("Signup Successful", "Account created successfully!")
+        else:
+            messagebox.showerror("Signup Failed", "Failed to create an account. Please try again.")
+    else:
+        messagebox.showerror("Invalid Information", "Please fill in all the informations needed.")
+
+# Initialize the admin login state
+admin_logged_in = False
+
+def admin_accounts():
+    global admin_logged_in
+    admin_credentials = {
+        "dra.dalusung@gmail.com": "admin01",
+        "dra.festejo@gmail.com": "admin02",
+        "dra.isip@gmail.com": "admin03",
+        "dr.sutare@gmail.com": "admin04"
+    }
+
+    entered_email = admin_email_entry.get()
+    entered_password = admin_password_entry.get()
+
+    if entered_email in admin_credentials and entered_password == admin_credentials[entered_email]:
+        admin_logged_in = True
+        admin_window()
+        admin_login_window.destroy()
+    else:
+        messagebox.showerror("Admin Login Failed", "Invalid email or password")
+    
+# Function to create the admin window    
+def admin_window():
+    global admin_logged_in
+    if admin_logged_in:
+        create_admin_window()
+    else:
+        messagebox.showerror("Admin Access Denied", "You need to log in as an admin first.")
+
+def admin_logout():
+    global admin_logged_in
+    admin_logged_in = False
+    messagebox.showinfo("Admin Log Out", "Admin logged out successfully!")
+    root.deiconify()
+
+# Dictionary to store appointments
+appointments = {}
+
+def appointment_window():
+    # Create an appointment frame within the main window
+    global appointment_window  # Declare the appointment_window as global
+    global appointments  # Declare appointments as global
+    appointment_window = tk.Toplevel(root)
+    appointment_window.geometry("700x500")
+    appointment_window.title("Appointment Scheduling")
+    
+    # Create an appointment frame within the appointment window
+    appointment_frame = tk.Frame(appointment_window, borderwidth=2, relief="ridge", padx=10, pady=10)
+    appointment_frame.pack(padx=20, pady=20)
+
+    # Hide the main window
+    root.withdraw()
+
+    def hide_login_box():
+        login_box.place_forget()
+
+    hide_login_box()
+
+    def schedule_appointment():
+        global appointments  # Access the global appointments variable
+        patient_name = name_entry.get()
+        age = age_entry.get()
+        contact_number = contact_entry.get()
+        sex = sex_var.get()
+        selected_doctor = doctor_var.get()
+        selected_slot = slot_var.get()
+        appointment_date = date_entry.get()
+        selected_reason = reasons_var.get()  # Get the selected reason
+
+        if patient_name and age and contact_number and appointment_date:
+            # Calculate the amount based on the selected reason
+            if selected_reason == "Checkup":
+                amount = "500 pesos"
+            elif selected_reason == "Medication":
+                amount = "1,200 pesos"
+            else:
+                amount = "Unknown"
+
+            appointment_info = {
+                "Name": patient_name,
+                "Age": age,
+                "Contact Number": contact_number,
+                "Sex": sex,
+                "Doctor": selected_doctor,
+                "Appointment Date": appointment_date,
+                "Reason": selected_reason,  # Add selected reason
+                "Amount to be Paid": amount  # Add amount
+        }
+            appointments[patient_name] = appointment_info
+            messagebox.showinfo("Appointment Scheduled", "Appointment scheduled successfully!")
+
+        ##### show appointment summary after successful appointment scheduling
+            show_appointment_summary(appointment_info)
+
+        else:
+            messagebox.showerror("Invalid Information", "Please fill in all required fields.")
 
         
-        self.hms_table.heading("nameoftable", text="Name of Table")
-        self.hms_table.heading("ref", text="Reference No.")
-        self.hms_table.heading("dose", text="Dose")
-        self.hms_table.heading("nooftablets", text="No of Tablets")
-        self.hms_table.heading("lot", text="Lot")
-        self.hms_table.heading("issuedate", text="Issue Date")
-        self.hms_table.heading("expdate", text="Exp Date")
-        self.hms_table.heading("dailydose", text="Daily Dose")
-        self.hms_table.heading("storage", text="Storage")
-        self.hms_table.heading("nhsnumber", text="NHS Number")
-        self.hms_table.heading("pname", text="Patient Name")
-        self.hms_table.heading("dob", text="DOB")
-        self.hms_table.heading("address", text="Address")
 
-        self.hms_table["show"]="headings"
+    name_label = tk.Label(appointment_window, text="Name:")
+    name_label.pack()
+    name_entry = tk.Entry(appointment_window)
+    name_entry.pack()
 
-        self.hms_table.pack(fill=BOTH, expand=1)
+    age_label = tk.Label(appointment_window, text="Age:")
+    age_label.pack()
+    age_entry = tk.Entry(appointment_window)
+    age_entry.pack()
 
-        self.hms_table.column("nameoftable", width=100)
-        self.hms_table.column("ref", width=100)
-        self.hms_table.column("dose", width=100)
-        self.hms_table.column("nooftablets", width=100)
-        self.hms_table.column("lot", width=100)
-        self.hms_table.column("issuedate", width=100)
-        self.hms_table.column("expdate", width=100)
-        self.hms_table.column("dailydose", width=100)
-        self.hms_table.column("storage", width=100)
-        self.hms_table.column("nhsnumber", width=100)
-        self.hms_table.column("pname", width=100)
-        self.hms_table.column("dob", width=100)
-        self.hms_table.column("address", width=100)
+    contact_label = tk.Label(appointment_window, text="Contact Number:")
+    contact_label.pack()
+    contact_entry = tk.Entry(appointment_window)
+    contact_entry.pack()
 
-        self.hms_table.pack(fill=BOTH, expand=1)
+    sex_label = tk.Label(appointment_window, text="Sex:")
+    sex_label.pack()
+    sex_var = tk.StringVar()
+    sex_var.set("Male")
+    sex_radio_male = tk.Radiobutton(appointment_window, text="Male", variable=sex_var, value="Male")
+    sex_radio_female = tk.Radiobutton(appointment_window, text="Female", variable=sex_var, value="Female")
+    sex_radio_male.pack()
+    sex_radio_female.pack()
 
-        # ==============================Functionality Declaration==============================
-        
-    def iPrescriptionData(self):
-        if self.Nameoftables.get()==" " or self.ref.get()==" ":
-            messagebox.showerror("Error","All fields are required")
-        else: 
-            conn=mysql.connector.connect(host="localhost",username="root",passwords="Test@123",database"Mydata)
-            my_cursor=conn.cursor()
-            my_cursor.execute("insert into hospital values(&s,&s,&s,&s,&s,&s,&s,&s,&s,&s,&s)",(
-                                                                                                  self.Nameoftablets.get(),
-                                                                                                  self.ref.get(),
-                                                                                                  self.Dose.get(),
-                                                                                                  self.NumberofTablets.get(),
-                                                                                                  self.Lot.get(),
-                                                                                                  self.Issuedate.get(),
-                                                                                                  self.ExpDate.get(),
-                                                                                                  self.DailyDose.get(),
-                                                                                                  self.StorageAdvice.get(),
-                                                                                                  self.nhsNumber.get(),
-                                                                                                  self.PatientName.get(),
-                                                                                                  self.DateOfBirth.get(),
-                                                                                                  self.PatientAddress.get()
-                                                                                                                                                                                                            
-                                                                                                  ))      
-                conn.commit()
-                conn.close()           
-                messsagebox.showinfo("Success","Record has beeen Inserted")
+    reasons_label = tk.Label(appointment_window, text="Reason of Appointment:")
+    reasons_label.pack()
+    reasons_var = tk.StringVar()
+    reasons_var.set("Checkup")
+    reasons_radio_checkup = tk.Radiobutton(appointment_window, text="Checkup", variable=reasons_var, value="Checkup")
+    reasons_radio_medication = tk.Radiobutton(appointment_window, text="Medication", variable=reasons_var, value="Medication")
+    reasons_radio_checkup.pack()
+    reasons_radio_medication.pack()
 
 
+    # Create a dictionary to store doctors and their available slots
+    doctors = {
+        "Dra. Dalusung": ["9:00 AM - 10:00 AM", "2:00 PM - 3:00 PM"],
+        "Dra. Festejo": ["10:00 AM - 11:00 AM", "3:00 PM - 4:00 PM"],
+        "Dra. Isip": ["7:00 AM - 8:00 AM", "5:00 PM - 6:00 PM"],
+        "Dr. Sutare": ["11:00 AM - 12:00 PM", "7:00 PM - 8:00 PM"],
+        }
+
+    doctor_label = tk.Label(appointment_window, text="Select Doctor:")
+    doctor_label.pack()
+    doctor_var = tk.StringVar(value=list(doctors.keys())[0])  # Set the default doctor
+    doctor_option_menu = tk.OptionMenu(appointment_window, doctor_var, *doctors.keys())
+    doctor_option_menu.pack()
+
+    def update_slot_options(*args):
+        selected_doctor = doctor_var.get()
+        # Update the slots when the doctor changes
+        slot_option_menu['menu'].delete(0, 'end')  # Clear the current slots
+        for slot in doctors[selected_doctor]:
+            slot_option_menu['menu'].add_command(label=slot, command=tk._setit(slot_var, slot))
+
+    doctor_var.trace("w", update_slot_options)  # Update slots when the doctor changes
+
+    slot_label = tk.Label(appointment_window, text="Select Slot:")
+    slot_label.pack()
+    slot_var = tk.StringVar(value=doctors[doctor_var.get()][0])  # Set the default slot
+    slot_option_menu = tk.OptionMenu(appointment_window, slot_var, *doctors[doctor_var.get()])
+    slot_option_menu.pack()
+
+    date_label = tk.Label(appointment_window, text="Appointment Date (e.g., 2023-01-01):")
+    date_label.pack()
+    date_entry = tk.Entry(appointment_window)
+    date_entry.pack()
+
+    schedule_button = tk.Button(appointment_window, text="Schedule Appointment and Print Summary", command=schedule_appointment)
+    schedule_button.pack()
+
+    # Create a button to go back to the main window
+    back_button = tk.Button(appointment_frame, text="Back to Main", command=show_main_window)
+    back_button.pack()
+   
+    # Make sure to destroy the appointment frame properly when it's closed
+    appointment_window.protocol("WM_DELETE_WINDOW", show_main_window)
+    appointment_window.mainloop()
+
+    root.withdraw()
+
+    def hide_login_box():
+        login_box.place_forget()
+
+    hide_login_box()
+
+def close_appointment_window():
+    appointment_window.destroy()
+
+
+def show_appointment_summary(appointment_info):
+    summary_window = tk.Toplevel(root)
+    summary_window.geometry("700x500")
+    summary_window.title("Appointment Summary")
+
+    for key, value in appointment_info.items():
+        label = tk.Label(summary_window, text=f"{key}: {value}")
+        label.pack()
+
+    # Close the appointment window after displaying the summary
+    appointment_window.destroy()  # Close the appointment window
+
+    root.deiconify()  # Show the main window again
+
+    #################################################################################################
+
+def search_appointments():
+    global appointments  # Access the global appointments variable
+    search_date = search_date_entry.get()
+    search_time = search_time_var.get()
+    search_doctor = search_doctor_var.get()
+
+    results = []
+    for appointment_info in appointments.values():
+        if (not search_date or appointment_info["Appointment Date"] == search_date) and \
+           (not search_time or appointment_info["Slot"] == search_time) and \
+           (not search_doctor or appointment_info["Doctor"] == search_doctor):
+            results.append(appointment_info)
+
+    if results:
+        show_search_results(results)
+    else:
+        messagebox.showinfo("Search Results", "No appointments found for the given criteria.")
+
+    search_date_label = tk.Label(appointment_window, text="Search Date (e.g., 2023-01-01):")
+    search_date_label.pack()
+    search_date_entry = tk.Entry(appointment_window)
+    
+    search_time_label = tk.Label(appointment_window, text="Search Time:")
+    search_time_label.pack()
+    search_time_var = tk.StringVar()
+    search_time_var.set("")  # Provide default value
+    search_time_option_menu = tk.OptionMenu(appointment_window, search_time_var, ["9:00 AM - 10:00 AM", "2:00 PM - 3:00 PM", "10:00 AM - 11:00 AM", "3:00 PM - 4:00 PM", "7:00 AM - 8:00 AM", "5:00 PM - 6:00 PM","11:00 AM - 12:00 PM", "7:00 PM - 8:00 PM"])
+    search_time_option_menu.pack()
+
+    search_doctor_label = tk.Label(appointment_window, text="Search Doctor:")
+    search_doctor_label.pack()
+    search_doctor_var = tk.StringVar()
+    search_doctor_var.set("")  # Provide default value
+    search_doctor_option_menu = tk.OptionMenu(appointment_window, search_doctor_var, ["Dra. Dalusung", "Dra. Festejo", "Dra. Isip", "Dr. Sutare"])
+    search_doctor_option_menu.pack()
+
+    search_button = tk.Button(appointment_frame, text="Search Appointments", command=search_appointments)
+    search_button.pack()
 
 
 
-root = Tk()
-ob = HMS(root)
+def show_search_results(results):
+    search_results_window = tk.Toplevel(root)
+    search_results_window.title("Search Results")
+
+    for result in results:
+        for key, value in result.items():
+            label = tk.Label(search_results_window, text=f"{key}: {value}")
+            label.pack()
+
+    search_results_window.mainloop()
+##########################################################################################################################
+
+def doctor_window():
+    doctor_window = tk.Toplevel()
+    doctor_window.title("Doctor Appointment Page")
+
+    doctor_frame = tk.Frame(doctor_window)
+    doctor_frame.pack()
+
+    appointments = get_appointments_for_doctor()  # Fetch appointments for the given doctor_id
+
+    if appointments:
+        for appointment in appointments:
+            appointment_label = tk.Label(doctor_frame, text=f"Patient: {appointment[1]}, Date: {appointment[3]}, Time: {appointment[4]}")
+            appointment_label.pack()
+    else:
+        no_appointments_label = tk.Label(doctor_frame, text="No appointments for this doctor.")
+        no_appointments_label.pack()
+
+    logout_button = tk.Button(doctor_window, text="Log Out", command=doctor_window.destroy)
+    logout_button.pack()
+
+    doctor_window.mainloop()
+
+
+def show_main_window():
+    # Show the main window again
+    root.deiconify()
+
+# Create the main window
+root = tk.Tk()
+root.geometry("700x500")
+root.title("Hospital Management System")
+
+
+# Load and display the background image
+background_image = Image.open("E:\Final Project\super final\wp6250256.webp")
+background_image = background_image.resize((700, 500), Image.Resampling.NEAREST)
+background_photo = ImageTk.PhotoImage(background_image)
+
+background_label = tk.Label(root, image=background_photo)
+background_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+
+label = tk.Label(root,
+                 text="Hospital Management System",
+                 font=("Times", "24", "bold"),
+                 fg="red",
+                 )
+label.pack(padx=50, pady=10)
+
+label = tk.Label(root,
+                 text="REGISTRATION FORM:",
+                 font=("Times", "14"),
+                 fg="black",bg='white'
+                 )
+label.pack(padx=50, pady=10)
+
+# initialize login_box frame but hide it
+login_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10)
+login_box.pack()
+login_box.place_forget()  # Hide the login form initially
+create_signup_box()
+
+
+
 root.mainloop()
