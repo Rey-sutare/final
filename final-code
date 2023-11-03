@@ -4,6 +4,15 @@ from PIL import Image, ImageTk
 import mysql.connector
 from tkinter.simpledialog import askstring
 
+
+def set_background_image(window, image_filename):
+    bg_image = Image.open(image_filename)
+    bg_photo = ImageTk.PhotoImage(bg_image)
+    bg_label = tk.Label(window, image=bg_photo)
+    bg_label.image = bg_photo  # To prevent image from being garbage collected
+    bg_label.place(x=0, y=0)
+
+
 bg_color = "#E0E0E0"  # Light gray
 mydb = mysql.connector.connect(
     host="localhost",
@@ -153,7 +162,7 @@ def create_signup_box():
 def create_admin_login_box():
     global admin_email_entry, admin_password_entry, admin_login_window
     admin_login_window = tk.Toplevel(root)
-    admin_login_window.geometry("300x150")
+    admin_login_window.geometry("400x400")
     admin_login_window.title("Login as Admin")
 
     admin_email_label = tk.Label(admin_login_window, text="Admin Email:")
@@ -171,7 +180,6 @@ def create_admin_login_box():
 
 
 def create_admin_window():
-    # Create the admin window
     admin_window = tk.Toplevel(root)
     admin_window.title("Admin Window")
 
@@ -197,15 +205,19 @@ def create_admin_window():
         text_widget.insert(tk.END, f"Username: {user_account[0]}\nEmail: {user_account[1]}\nPassword: {user_account[2]}\n\n")
     #summary of appointments
     
+    search_button = tk.Button(admin_frame, text="Search Appointments", command=search_appointments,)
+    search_button.pack()
+
     #logout button
-    logout_button = tk.Button(admin_window, text="Log Out", command=admin_logout)
+    logout_button = tk.Button(admin_window, text="Log Out", command=admin_window.destroy)
     logout_button.pack()
 
     # Create a button to go back to the main window
     back_button = tk.Button(admin_frame, text="Back to Main", command=admin_window.destroy)
     back_button.pack()
 
-
+    
+    
 
 def login():
     global email_entry, password_entry
@@ -249,10 +261,12 @@ def admin_accounts():
 
     if entered_email in admin_credentials and entered_password == admin_credentials[entered_email]:
         admin_logged_in = True
-        admin_window()
+        create_admin_window()
         admin_login_window.destroy()
     else:
         messagebox.showerror("Admin Login Failed", "Invalid email or password")
+    
+
     
 # Function to create the admin window    
 def admin_window():
@@ -474,7 +488,7 @@ def search_appointments():
     search_doctor_option_menu = tk.OptionMenu(appointment_window, search_doctor_var, ["Dra. Dalusung", "Dra. Festejo", "Dra. Isip", "Dr. Sutare"])
     search_doctor_option_menu.pack()
 
-    search_button = tk.Button(appointment_frame, text="Search Appointments", command=search_appointments)
+    search_button = tk.Button(appointment_window, text="Search Appointments", command=search_appointments)
     search_button.pack()
 
 
@@ -520,17 +534,12 @@ def show_main_window():
 
 # Create the main window
 root = tk.Tk()
-root.geometry("700x500")
+root.geometry("650x464")
 root.title("Hospital Management System")
+set_background_image(root, "bg2.png")
 
 
-# Load and display the background image
-background_image = Image.open("E:\Final Project\super final\wp6250256.webp")
-background_image = background_image.resize((700, 500), Image.Resampling.NEAREST)
-background_photo = ImageTk.PhotoImage(background_image)
 
-background_label = tk.Label(root, image=background_photo)
-background_label.place(x=0, y=0, relwidth=1, relheight=1)
 
 
 label = tk.Label(root,
