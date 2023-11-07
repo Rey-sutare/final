@@ -1,0 +1,39 @@
+def create_signup_box():
+    global username_entry, email_entry, password_entry, signup_box
+    signup_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10)
+    signup_box.pack(padx=20, pady=20)
+
+    username_label = tk.Label(signup_box, text="Username:", anchor="w")
+    username_label.pack()
+    username_entry = tk.Entry(signup_box)
+    username_entry.pack(fill="x", padx=10, pady=5)
+
+    email_label = tk.Label(signup_box, text="Email Address:", anchor="w")
+    email_label.pack()
+    email_entry = tk.Entry(signup_box)
+    email_entry.pack(fill="x", padx=10, pady=5)
+
+    password_label = tk.Label(signup_box, text="Password:", anchor="w")
+    password_label.pack()
+    password_entry = tk.Entry(signup_box, show="*")
+    password_entry.pack(fill="x", padx=10, pady=5)
+
+    def signup():
+        username = username_entry.get()
+        email = email_entry.get()
+        password = password_entry.get()
+
+        if not is_valid_email(email):
+            # Show an error message and do not proceed with signup
+            error_message = tk.Label(signup_box, text="Invalid email address. Please use a valid Gmail address.")
+            error_message.pack()
+        else:
+            create_login_box()
+
+           
+    create_acc_button = tk.Button(signup_box, text="Create Account", bg='lightgreen', command=signup)
+    create_acc_button.pack(pady=10)
+
+    login_page_button = tk.Label(signup_box, text="Already have an account? Log in here.", fg='blue', cursor='hand2')
+    login_page_button.bind("<Button-1>", create_login_box)
+    login_page_button.pack()
