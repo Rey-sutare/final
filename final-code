@@ -2,16 +2,16 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 import mysql.connector
-from tkinter.simpledialog import askstring
+from tkinter import ttk  # for tree
+from tkcalendar import Calendar
+from datetime import datetime
 
 
-def set_background_image(window, image_filename):
-    bg_image = Image.open(image_filename)
-    bg_photo = ImageTk.PhotoImage(bg_image)
-    bg_label = tk.Label(window, image=bg_photo)
-    bg_label.image = bg_photo  # To prevent image from being garbage collected
-    bg_label.place(x=0, y=0)
-
+# Declare global variables
+search_date_entry = None
+search_time_var = None
+search_doctor_var = None
+date_entry = None
 
 bg_color = "#E0E0E0"  # Light gray
 mydb = mysql.connector.connect(
@@ -22,15 +22,22 @@ mydb = mysql.connector.connect(
     database="hms"
 )
 
-
 # Create a cursor for executing SQL queries
 cursor = mydb.cursor()
 
+logged_in_user_info = {
+    "full_name": None,
+    "age": None,
+    "sex": None,
+}
+
 # Function to insert a new user into the database during signup
-def insert_users_into_db(username, email, password):
+
+
+def insert_users_into_db(full_name, age, sex, email, password):
     try:
-        query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
-        cursor.execute(query, (username, email, password))
+        query = "INSERT INTO users (full_name, age, sex, email, password) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(query, (full_name, age, sex, email, password))
         mydb.commit()
         return True
     except Exception as e:
@@ -52,6 +59,7 @@ def insert_admins_into_db(email, password):
 
 # Function to validate login credentials against the database
 
+
 def check_login_credentials(email, password):
     query = "SELECT * FROM users WHERE email = %s AND password = %s"
     cursor.execute(query, (email, password))
@@ -60,47 +68,70 @@ def check_login_credentials(email, password):
 
 
 def check_admin_login_credentials(email, password):
-        try:
-            query = "SELECT * FROM admins WHERE email = %s AND password = %s"
-            cursor.execute(query, (email, password))
-            result = cursor.fetchone()
-            if result:
-                return True
-            else:
-                print("Admin login failed: Invalid email or password")
-                return False
-        except Exception as e:
-            print("Error while checking admin login credentials:", str(e))
+    try:
+        query = "SELECT * FROM admins WHERE email = %s AND password = %s"
+        cursor.execute(query, (email, password))
+        result = cursor.fetchone()
+        if result:
+            return True
+        else:
+            print("Admin login failed: Invalid email or password")
             return False
+    except Exception as e:
+        print("Error while checking admin login credentials:", str(e))
+        return False
+
 
 def get_appointments_for_doctor(doctor_id):
     try:
-        query = "SELECT * FROM doctorappointment WHERE doctor_id = %s"
+        query = "SELECT * FROM appointments WHERE doctor_id = %s"
         cursor.execute(query, (doctor_id,))
         appointments = cursor.fetchall()
         return appointments
-    
     except Exception as e:
         print("Error while retrieving doctor appointments:", str(e))
         return None
 
-def save_appointment_to_summary(appointment_info):
-        try:
-            query = "INSERT INTO appointments (Name, Age, Contact_Number, Sex, Doctor, Appointment_Date, Reason, Amount) " \
-                    "VALUES (%(Name)s, %(Age)s, %(Contact_Number)s, %(Sex)s, %(Doctor)s, %(Appointment_Date)s, %(Reason)s, %(Amount)s)"
-            cursor.execute(query, appointment_info)
-            mydb.commit()
-            return True
-    
-        except Exception as e:
-            print("Error while inserting into the database:", str(e))
-            mydb.rollback()
-            return False
+
+def save_appointment_to_database(appointment_info):
+    try:
+        # Reformat the appointment date to match the expected format ("%Y-%m-%d")
+        appointment_date = datetime.strptime(appointment_info["Appointment Date"], "%Y-%m-%d")
+        formatted_appointment_date = appointment_date.strftime("%Y-%m-%d")
+
         
+        query = "INSERT INTO appointments (patient_name, age, contact_number, sex, reason, doctor, appointment_time, appointment_date, amount) " \
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        values = (
+            appointment_info["Name"],
+            appointment_info["Age"],
+            appointment_info["Contact Number"],
+            appointment_info["Sex"],
+            appointment_info["Reason"],
+            appointment_info["Doctor"],
+            appointment_info["Appointment Time"],
+            formatted_appointment_date,
+            appointment_info["Amount"]
+        )
+        cursor.execute(query, values)
+        mydb.commit()
+        print("Data saved successfully:", values)
+        messagebox.showinfo("Appointment Scheduled", "Appointment scheduled successfully!")
+        return True
+    except mysql.connector.Error as e:
+        print("Error while inserting into the database:", str(e))
+        mydb.rollback()
+        messagebox.showerror("Error", "Failed to schedule the appointment. Please try again.")
+        return False
+
+
 login_window = None
 
+
 ################################################################################################
-def create_login_box():
+
+
+def create_login_box(event=None):
     global email_entry, password_entry, login_window, signup_box  # Make signup_box global
     login_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10)
     login_box.pack(padx=20, pady=20)
@@ -118,27 +149,39 @@ def create_login_box():
     login_button = tk.Button(login_box, text="Login", command=login)
     login_button.pack(pady=10)
 
-    admin_login_button = tk.Button(root, borderwidth=2, relief="ridge", padx=10, pady=10, bg= 'lightgreen', text="Login as Admin", command=create_admin_login_box)
+    admin_login_button = tk.Button(root, borderwidth=2, relief="ridge", padx=10, pady=10, bg='lightgreen', text="Login as Admin", command=create_admin_login_box)
     admin_login_button.pack(pady=10)
 
     # Hide the signup_box if it exists
     if signup_box:
         signup_box.pack_forget()
 
-    
     # Initialize the signup_box as None
     signup_box = None
 
 
 def create_signup_box():
-    global username_entry, email_entry, password_entry, signup_box
-    signup_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10,)
+    global full_name_entry, age_entry, sex_var, email_entry, password_entry, signup_box
+    signup_box = tk.Frame(root, borderwidth=2, relief="ridge", padx=10, pady=10)
     signup_box.pack(padx=20, pady=20)
 
-    username_label = tk.Label(signup_box, text="Username:", anchor="w")
-    username_label.pack()
-    username_entry = tk.Entry(signup_box)
-    username_entry.pack(fill="x", padx=10, pady=5)
+    full_name_label = tk.Label(signup_box, text="Full Name:", anchor="w")
+    full_name_label.pack()
+    full_name_entry = tk.Entry(signup_box)
+    full_name_entry.pack(fill="x", padx=10, pady=5)
+
+    age_label = tk.Label(signup_box, text="Age:", anchor="w")
+    age_label.pack()
+    age_entry = tk.Entry(signup_box)
+    age_entry.pack(fill="x", padx=10, pady=5)
+
+    sex_label = tk.Label(signup_box, text="Sex:", anchor="w")
+    sex_label.pack()
+    sex_var = tk.StringVar(value="Male")
+    sex_radio_male = tk.Radiobutton(signup_box, text="Male", variable=sex_var, value="Male")
+    sex_radio_female = tk.Radiobutton(signup_box, text="Female", variable=sex_var, value="Female")
+    sex_radio_male.pack()
+    sex_radio_female.pack()
 
     email_label = tk.Label(signup_box, text="Email Address:", anchor="w")
     email_label.pack()
@@ -150,19 +193,18 @@ def create_signup_box():
     password_entry = tk.Entry(signup_box, show="*")
     password_entry.pack(fill="x", padx=10, pady=5)
 
-    create_acc_button = tk.Button(signup_box, text="Create Account",bg= 'lightgreen', command=signup)
+    create_acc_button = tk.Button(signup_box, text="Create Account", bg='lightgreen', command=signup)
     create_acc_button.pack(pady=10)
 
-    login_page_button = tk.Button(root, text="Already have an account? Log in here.", background='lightgreen', command=create_login_box)
+    login_page_button = tk.Label(signup_box, text="Already have an account? Log in here.", fg='blue', cursor='hand2')
+    login_page_button.bind("<Button-1>", create_login_box)
     login_page_button.pack()
 
-
-    
 
 def create_admin_login_box():
     global admin_email_entry, admin_password_entry, admin_login_window
     admin_login_window = tk.Toplevel(root)
-    admin_login_window.geometry("400x400")
+    admin_login_window.geometry("300x150")
     admin_login_window.title("Login as Admin")
 
     admin_email_label = tk.Label(admin_login_window, text="Admin Email:")
@@ -175,7 +217,7 @@ def create_admin_login_box():
     admin_password_entry = tk.Entry(admin_login_window, show="*")
     admin_password_entry.pack(fill="x", padx=10, pady=5)
 
-    admin_login_button = tk.Button(admin_login_window, text="Login", bg= 'lightgreen', command=admin_accounts)
+    admin_login_button = tk.Button(admin_login_window, text="Login", bg='lightgreen', command=admin_accounts)
     admin_login_button.pack(pady=10)
 
 
@@ -203,21 +245,20 @@ def create_admin_window():
     # Insert user accounts and records into the text widget
     for user_account in user_accounts:
         text_widget.insert(tk.END, f"Username: {user_account[0]}\nEmail: {user_account[1]}\nPassword: {user_account[2]}\n\n")
-    #summary of appointments
-    
-    search_button = tk.Button(admin_frame, text="Search Appointments", command=search_appointments,)
+
+    # summary of appointments
+
+    search_button = tk.Button(admin_frame, text="Search Appointments", command=create_search_window)
     search_button.pack()
 
-    #logout button
-    logout_button = tk.Button(admin_window, text="Log Out", command=admin_window.destroy)
+    # logout button
+    logout_button = tk.Button(admin_window, text="Log Out", command=admin_logout)
     logout_button.pack()
 
     # Create a button to go back to the main window
     back_button = tk.Button(admin_frame, text="Back to Main", command=admin_window.destroy)
     back_button.pack()
 
-    
-    
 
 def login():
     global email_entry, password_entry
@@ -231,21 +272,32 @@ def login():
     else:
         messagebox.showerror("Invalid Information", "Please fill in both email and password.")
 
+
 def signup():
-    global username_entry, email_entry, password_entry
-    username = username_entry.get()
+    global full_name, age, sex
+    full_name = full_name_entry.get()
+    age = age_entry.get()
+    sex = sex_var.get()
     email = email_entry.get()
     password = password_entry.get()
-    if username and email and password:
-        if insert_users_into_db(username, email, password):
+    if  "@gmail.com" not in email:
+        messagebox.showerror("Invalid Email", "Please enter a valid Gmail address.")
+        return
+    elif full_name and age and sex and email and password:
+        if insert_users_into_db(full_name, age, sex, email, password):
             messagebox.showinfo("Signup Successful", "Account created successfully!")
+            appointment_window()
         else:
             messagebox.showerror("Signup Failed", "Failed to create an account. Please try again.")
     else:
-        messagebox.showerror("Invalid Information", "Please fill in all the informations needed.")
+        messagebox.showerror("Invalid Information", "Please fill in all the information needed.")
+
 
 # Initialize the admin login state
+
+
 admin_logged_in = False
+
 
 def admin_accounts():
     global admin_logged_in
@@ -261,20 +313,21 @@ def admin_accounts():
 
     if entered_email in admin_credentials and entered_password == admin_credentials[entered_email]:
         admin_logged_in = True
-        create_admin_window()
+        admin_window()
         admin_login_window.destroy()
     else:
         messagebox.showerror("Admin Login Failed", "Invalid email or password")
-    
 
-    
-# Function to create the admin window    
+# Function to create the admin window
+
+
 def admin_window():
     global admin_logged_in
     if admin_logged_in:
         create_admin_window()
     else:
         messagebox.showerror("Admin Access Denied", "You need to log in as an admin first.")
+
 
 def admin_logout():
     global admin_logged_in
@@ -283,16 +336,20 @@ def admin_logout():
     root.deiconify()
 
 # Dictionary to store appointments
+
+
 appointments = {}
+
 
 def appointment_window():
     # Create an appointment frame within the main window
     global appointment_window  # Declare the appointment_window as global
     global appointments  # Declare appointments as global
+    global date_entry
     appointment_window = tk.Toplevel(root)
     appointment_window.geometry("700x500")
     appointment_window.title("Appointment Scheduling")
-    
+
     # Create an appointment frame within the appointment window
     appointment_frame = tk.Frame(appointment_window, borderwidth=2, relief="ridge", padx=10, pady=10)
     appointment_frame.pack(padx=20, pady=20)
@@ -306,69 +363,61 @@ def appointment_window():
     hide_login_box()
 
     def schedule_appointment():
-        global appointments  # Access the global appointments variable
-        patient_name = name_entry.get()
+        global appointments
+        global date_entry
+        patient_name = full_name_entry.get()
         age = age_entry.get()
         contact_number = contact_entry.get()
         sex = sex_var.get()
         selected_doctor = doctor_var.get()
         selected_slot = slot_var.get()
-        appointment_date = date_entry.get()
-        selected_reason = reasons_var.get()  # Get the selected reason
+        appointment_date_str = date_entry.get_date()
+        selected_reason = reasons_var.get()
 
-        if patient_name and age and contact_number and appointment_date:
-            # Calculate the amount based on the selected reason
-            if selected_reason == "Checkup":
-                amount = "500 pesos"
-            elif selected_reason == "Medication":
-                amount = "1,200 pesos"
-            else:
-                amount = "Unknown"
+        # Convert appointment_date_str from '11/10/23' to '%Y-%m-%d' format
+        appointment_date_obj = datetime.strptime(appointment_date_str, '%m/%d/%y')
+        formatted_appointment_date = appointment_date_obj.strftime('%Y-%m-%d')
 
+        # Initialize amount with a default value
+        amount = "Unknown"
+
+        if selected_reason == "Checkup":
+            amount = "500 pesos"
+        elif selected_reason == "Medication":
+            amount = "1,200 pesos"
+
+        if patient_name and age and contact_number and formatted_appointment_date:
             appointment_info = {
                 "Name": patient_name,
                 "Age": age,
                 "Contact Number": contact_number,
                 "Sex": sex,
                 "Doctor": selected_doctor,
-                "Appointment Date": appointment_date,
-                "Reason": selected_reason,  # Add selected reason
-                "Amount to be Paid": amount  # Add amount
-        }
-            appointments[patient_name] = appointment_info
-            messagebox.showinfo("Appointment Scheduled", "Appointment scheduled successfully!")
+                "Appointment Date": formatted_appointment_date,
+                "Appointment Time": selected_slot,
+                "Reason": selected_reason,
+                "Amount": amount
+            }    
 
-        ##### show appointment summary after successful appointment scheduling
-            show_appointment_summary(appointment_info)
-
+            # Call the function to save the appointment to the database
+            if save_appointment_to_database(appointment_info):
+                appointments[patient_name] = appointment_info
+                # Show appointment summary
+                show_appointment_summary(appointment_info)
         else:
             messagebox.showerror("Invalid Information", "Please fill in all required fields.")
 
-        
-
-    name_label = tk.Label(appointment_window, text="Name:")
-    name_label.pack()
-    name_entry = tk.Entry(appointment_window)
-    name_entry.pack()
-
-    age_label = tk.Label(appointment_window, text="Age:")
-    age_label.pack()
-    age_entry = tk.Entry(appointment_window)
-    age_entry.pack()
+    if logged_in_user_info["full_name"]:
+        full_name_entry.insert(0, logged_in_user_info["full_name"])
+    if logged_in_user_info["age"]:
+        age_entry.insert(0, logged_in_user_info["age"])
+    if logged_in_user_info["sex"]:
+        sex_var.set(logged_in_user_info["sex"])
 
     contact_label = tk.Label(appointment_window, text="Contact Number:")
     contact_label.pack()
     contact_entry = tk.Entry(appointment_window)
     contact_entry.pack()
-
-    sex_label = tk.Label(appointment_window, text="Sex:")
-    sex_label.pack()
-    sex_var = tk.StringVar()
-    sex_var.set("Male")
-    sex_radio_male = tk.Radiobutton(appointment_window, text="Male", variable=sex_var, value="Male")
-    sex_radio_female = tk.Radiobutton(appointment_window, text="Female", variable=sex_var, value="Female")
-    sex_radio_male.pack()
-    sex_radio_female.pack()
 
     reasons_label = tk.Label(appointment_window, text="Reason of Appointment:")
     reasons_label.pack()
@@ -378,7 +427,6 @@ def appointment_window():
     reasons_radio_medication = tk.Radiobutton(appointment_window, text="Medication", variable=reasons_var, value="Medication")
     reasons_radio_checkup.pack()
     reasons_radio_medication.pack()
-
 
     # Create a dictionary to store doctors and their available slots
     doctors = {
@@ -409,9 +457,9 @@ def appointment_window():
     slot_option_menu = tk.OptionMenu(appointment_window, slot_var, *doctors[doctor_var.get()])
     slot_option_menu.pack()
 
-    date_label = tk.Label(appointment_window, text="Appointment Date (e.g., 2023-01-01):")
+    date_label = tk.Label(appointment_window, text="Appointment Date:")
     date_label.pack()
-    date_entry = tk.Entry(appointment_window)
+    date_entry = Calendar(appointment_window, selectmode="day", year=2023, month=1, day=1)
     date_entry.pack()
 
     schedule_button = tk.Button(appointment_window, text="Schedule Appointment and Print Summary", command=schedule_appointment)
@@ -420,17 +468,21 @@ def appointment_window():
     # Create a button to go back to the main window
     back_button = tk.Button(appointment_frame, text="Back to Main", command=show_main_window)
     back_button.pack()
-   
+
     # Make sure to destroy the appointment frame properly when it's closed
     appointment_window.protocol("WM_DELETE_WINDOW", show_main_window)
     appointment_window.mainloop()
 
     root.withdraw()
 
+    # Insert the setup_tree_widget function to display the tree widget
+    setup_tree_widget()
+
     def hide_login_box():
         login_box.place_forget()
 
     hide_login_box()
+
 
 def close_appointment_window():
     appointment_window.destroy()
@@ -442,68 +494,159 @@ def show_appointment_summary(appointment_info):
     summary_window.title("Appointment Summary")
 
     for key, value in appointment_info.items():
-        label = tk.Label(summary_window, text=f"{key}: {value}")
+        if key == "Appointment Date":
+            # Format the date to display only the date portion (e.g., 2023-01-01)
+            formatted_date = value.split()[0]
+            label = tk.Label(summary_window, text=f"{key}: {formatted_date}")
+        else:
+            label = tk.Label(summary_window, text=f"{key}: {value}")
         label.pack()
 
+    # Insert the appointment information into the database
+    query = "INSERT INTO appointments (patient_name, age, contact_number, sex, reason, doctor, appointment_time, appointment_date, amount) " \
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    cursor.execute(query, (patient_name, age, contact_number, sex, selected_reason, selected_doctor, appointment_time, appointment_date, amount))
+    mydb.commit()
+
     # Close the appointment window after displaying the summary
-    appointment_window.destroy()  # Close the appointment window
+    appointment_window.destroy()
+    root.deiconify()
 
-    root.deiconify()  # Show the main window again
+#################################################################################################
 
-    #################################################################################################
+# Create a dictionary to store doctors and their available slots
+
+
+doctors = {
+    "Dra. Dalusung": ["9:00 AM - 10:00 AM", "2:00 PM - 3:00 PM"],
+    "Dra. Festejo": ["10:00 AM - 11:00 AM", "3:00 PM - 4:00 PM"],
+    "Dra. Isip": ["7:00 AM - 8:00 AM", "5:00 PM - 6:00 PM"],
+    "Dr. Sutare": ["11:00 AM - 12:00 PM", "7:00 PM - 8:00 PM"],
+}
+
+
+def create_search_window():
+    global search_date_entry, search_time_var, search_doctor_var, search_results_tree
+    search_window = tk.Toplevel(root)
+    search_window.geometry("400x400")
+    search_window.title("Search Appointments")
+
+    search_date_label = tk.Label(search_window, text="Search by Date:")
+    search_date_label.grid(row=0, column=0, padx=10, pady=5)
+    search_date_entry = tk.Entry(search_window)  # Declare as a global variable
+    search_date_entry.grid(row=0, column=1, padx=10, pady=5)
+
+    search_doctor_label = tk.Label(search_window, text="Search by Doctor:")
+    search_doctor_label.grid(row=1, column=0, padx=10, pady=5)
+    search_doctor_var = tk.StringVar(value="")
+    search_doctor_option_menu = tk.OptionMenu(search_window, search_doctor_var, "", *doctors.keys())
+    search_doctor_option_menu.grid(row=1, column=1, padx=10, pady=5)
+
+    search_time_label = tk.Label(search_window, text="Search by Time:")
+    search_time_label.grid(row=2, column=0, padx=10, pady=5)
+    search_time_var = tk.StringVar(value="")  # Set a default value
+    search_time_option_menu = tk.OptionMenu(search_window, search_time_var, "")  # Initially empty
+    search_time_option_menu.grid(row=2, column=1, padx=10, pady=5)
+
+    # Function to update time options based on selected doctor
+    def update_time_options(*args):
+        selected_doctor = search_doctor_var.get()
+        search_time_option_menu['menu'].delete(0, 'end')  # Clear the current time options
+        if selected_doctor in doctors:
+            for slot in doctors[selected_doctor]:
+                search_time_option_menu['menu'].add_command(label=slot, command=tk._setit(search_time_var, slot))
+
+    # Attach the update_time_options function to the doctor_var
+    search_doctor_var.trace("w", update_time_options)
+
+    search_button = tk.Button(search_window, text="Search Appointments", command=search_appointments)
+    search_button.grid(row=3, column=0, columnspan=2, pady=10)
+
+    # Create a treeview widget to display search results
+    search_results_tree = ttk.Treeview(search_window, columns=("Name", "Date", "Time", "Doctor", "Reason"))
+    search_results_tree.heading("#1", text="Name")
+    search_results_tree.heading("#2", text="Date")
+    search_results_tree.heading("#3", text="Time")
+    search_results_tree.heading("#4", text="Doctor")
+    search_results_tree.heading("#5", text="Reason")
+    search_results_tree.grid(row=4, column=0, columnspan=2, padx=10, pady=5)
+
+    # Add scrollbars to the treeview for better navigation
+    scrollbar_x = ttk.Scrollbar(search_window, orient="horizontal", command=search_results_tree.xview)
+    scrollbar_x.grid(row=5, column=0, columnspan=2, sticky="ew")
+    search_results_tree.configure(xscrollcommand=scrollbar_x.set)
+    scrollbar_y = ttk.Scrollbar(search_window, orient="vertical", command=search_results_tree.yview)
+    scrollbar_y.grid(row=4, column=2, sticky="ns")
+    search_results_tree.configure(yscrollcommand=scrollbar_y.set)
+
+    search_results_tree.grid()
+
+    search_window.protocol("WM_DELETE_WINDOW", search_window.destroy)
+    search_window.mainloop()
+
+########################### SEARCH ####################################################
+
+# Create a function to set up and populate the tree widget
+def setup_tree_widget():
+    # Create a new window or frame to contain the tree widget
+    tree_window = tk.Toplevel(root)
+    tree_window.title("Appointments List")
+
+    # Create the Treeview widget
+    tree = ttk.Treeview(tree_window, columns=("Name", "Age", "Contact Number", "Doctor", "Appointment Date", "Reason"))
+
+    # Define column names
+    tree.heading("#1", text="Name")
+    tree.heading("#2", text="Doctor")
+    tree.heading("#3", text="Appointment Date")
+    tree.heading("#4", text="Reason")
+
+    # Insert data into the tree widget
+    # For each appointment, insert the data into the tree widget
+    for name, doctor, appointment_date, reason, amount in appointments:
+        tree.insert("", "end", values=(name, doctor, appointment_date, reason))
+
+    # Pack the tree widget
+    tree.pack()
+
 
 def search_appointments():
-    global appointments  # Access the global appointments variable
     search_date = search_date_entry.get()
     search_time = search_time_var.get()
     search_doctor = search_doctor_var.get()
 
-    results = []
-    for appointment_info in appointments.values():
-        if (not search_date or appointment_info["Appointment Date"] == search_date) and \
-           (not search_time or appointment_info["Slot"] == search_time) and \
-           (not search_doctor or appointment_info["Doctor"] == search_doctor):
-            results.append(appointment_info)
+    try:
+        query = "SELECT * FROM appointments WHERE 1"
+        params = []  # Create a list to store the search parameters
 
-    if results:
-        show_search_results(results)
-    else:
-        messagebox.showinfo("Search Results", "No appointments found for the given criteria.")
+        if search_date:
+            query += " AND appointment_date = %s"
+            params.append(search_date)
 
-    search_date_label = tk.Label(appointment_window, text="Search Date (e.g., 2023-01-01):")
-    search_date_label.pack()
-    search_date_entry = tk.Entry(appointment_window)
-    
-    search_time_label = tk.Label(appointment_window, text="Search Time:")
-    search_time_label.pack()
-    search_time_var = tk.StringVar()
-    search_time_var.set("")  # Provide default value
-    search_time_option_menu = tk.OptionMenu(appointment_window, search_time_var, ["9:00 AM - 10:00 AM", "2:00 PM - 3:00 PM", "10:00 AM - 11:00 AM", "3:00 PM - 4:00 PM", "7:00 AM - 8:00 AM", "5:00 PM - 6:00 PM","11:00 AM - 12:00 PM", "7:00 PM - 8:00 PM"])
-    search_time_option_menu.pack()
+        if search_time:
+            query += " AND appointment_time = %s"
+            params.append(search_time)
 
-    search_doctor_label = tk.Label(appointment_window, text="Search Doctor:")
-    search_doctor_label.pack()
-    search_doctor_var = tk.StringVar()
-    search_doctor_var.set("")  # Provide default value
-    search_doctor_option_menu = tk.OptionMenu(appointment_window, search_doctor_var, ["Dra. Dalusung", "Dra. Festejo", "Dra. Isip", "Dr. Sutare"])
-    search_doctor_option_menu.pack()
+        if search_doctor:
+            query += " AND doctor = %s"
+            params.append(search_doctor)
 
-    search_button = tk.Button(appointment_window, text="Search Appointments", command=search_appointments)
-    search_button.pack()
+        cursor.execute(query, tuple(params))  # Convert the params list to a tuple
+        results = cursor.fetchall()
 
+        if results:
+            show_search_results(results)
+        else:
+            messagebox.showinfo("Search Results", "No appointments found for the given criteria.")
+    except Exception as e:
+        print("Error while searching for appointments:", str(e))
 
 
 def show_search_results(results):
-    search_results_window = tk.Toplevel(root)
-    search_results_window.title("Search Results")
-
+    search_results_tree.delete(*search_results_tree.get_children())  # Clear existing items in the tree
     for result in results:
-        for key, value in result.items():
-            label = tk.Label(search_results_window, text=f"{key}: {value}")
-            label.pack()
+        search_results_tree.insert("", "end", values=(result[1], result[8], result[7], result[6], result[5]))
 
-    search_results_window.mainloop()
-##########################################################################################################################
 
 def doctor_window():
     doctor_window = tk.Toplevel()
@@ -512,11 +655,13 @@ def doctor_window():
     doctor_frame = tk.Frame(doctor_window)
     doctor_frame.pack()
 
-    appointments = get_appointments_for_doctor()  # Fetch appointments for the given doctor_id
+    doctor_id = "your_doctor_id_here"  # Replace with the actual doctor's ID
+
+    appointments = get_appointments_for_doctor(doctor_id)  # Fetch appointments for the given doctor_id
 
     if appointments:
         for appointment in appointments:
-            appointment_label = tk.Label(doctor_frame, text=f"Patient: {appointment[1]}, Date: {appointment[3]}, Time: {appointment[4]}")
+            appointment_label = tk.Label(doctor_frame, text=f"Patient: {appointment[1]}, Date: {appointment[7]}, Time: {appointment[6]}")
             appointment_label.pack()
     else:
         no_appointments_label = tk.Label(doctor_frame, text="No appointments for this doctor.")
@@ -532,18 +677,28 @@ def show_main_window():
     # Show the main window again
     root.deiconify()
 
+    # Create a new search window when "Search Appointments" is clicked
+    create_search_window()
+
 # Create the main window
+
+
 root = tk.Tk()
-root.geometry("650x464")
-root.title("Hospital Management System")
-set_background_image(root, "bg2.png")
+root.geometry("700x500")
+root.title("TCNR's Hospital Management System")
 
 
+# Load and display the background image
+background_image = Image.open("bg1.jpg")
+background_image = background_image.resize((1365, 750), Image.Resampling.NEAREST)
+background_photo = ImageTk.PhotoImage(background_image)
 
+background_label = tk.Label(root, image=background_photo)
+background_label.place(x=0, y=0, relwidth=1, relheight=1)
 
 
 label = tk.Label(root,
-                 text="Hospital Management System",
+                 text="TCNR's Hospital Management System",
                  font=("Times", "24", "bold"),
                  fg="red",
                  )
@@ -563,5 +718,5 @@ login_box.place_forget()  # Hide the login form initially
 create_signup_box()
 
 
-
 root.mainloop()
+mydb.close()
