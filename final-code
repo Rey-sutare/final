@@ -1,17 +1,43 @@
+#red dots are new code lines 
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 import mysql.connector
-from tkinter import ttk  # for tree
+from tkinter import ttk, filedialog  # for tree
+from reportlab.lib.pagesizes import letter #for pdf
+from reportlab.pdfgen import canvas #for pdf
+import re #for pdf ata or doctor limita
+from tkinter import Tk, Label, Button, StringVar, Entry, messagebox
 from tkcalendar import Calendar
 from datetime import datetime
+from fpdf import FPDF
 
+# Maximum appointments per doctor
+MAX_APPOINTMENTS_PER_DOCTOR = 20  # You can adjust this value as needed
 
 # Declare global variables
 search_date_entry = None
 search_time_var = None
 search_doctor_var = None
 date_entry = None
+
+# Add these global variables at the beginning of your code
+name_var = None
+date_var = None
+time_var = None
+search_date_entry = None
+patient_name = None
+age = None
+contact_number = None
+sex = None
+selected_reason = None
+selected_doctor = None
+appointment_time = None
+appointment_date = None
+amount = None
+disease = None
+
+doctor_appointments = {}  # Dictionary to store doctor appointments and their counts
 
 bg_color = "#E0E0E0"  # Light gray
 mydb = mysql.connector.connect(
@@ -25,15 +51,7 @@ mydb = mysql.connector.connect(
 # Create a cursor for executing SQL queries
 cursor = mydb.cursor()
 
-logged_in_user_info = {
-    "full_name": None,
-    "age": None,
-    "sex": None,
-}
-
 # Function to insert a new user into the database during signup
-
-
 def insert_users_into_db(full_name, age, sex, email, password):
     try:
         query = "INSERT INTO users (full_name, age, sex, email, password) VALUES (%s, %s, %s, %s, %s)"
@@ -44,7 +62,6 @@ def insert_users_into_db(full_name, age, sex, email, password):
         print("Error while inserting into the database:", str(e))
         mydb.rollback()
         return False
-
 
 def insert_admins_into_db(email, password):
     try:
@@ -58,7 +75,6 @@ def insert_admins_into_db(email, password):
         return False
 
 # Function to validate login credentials against the database
-
 
 def check_login_credentials(email, password):
     query = "SELECT * FROM users WHERE email = %s AND password = %s"
@@ -111,11 +127,29 @@ def save_appointment_to_database(appointment_info):
             appointment_info["Doctor"],
             appointment_info["Appointment Time"],
             formatted_appointment_date,
-            appointment_info["Amount"]
+            appointment_info["Amount"],
+           # appointment_info["Disease"]
         )
+        
+        # Check doctor appointment count here
+        doctor = appointment_info["Doctor"]
+        if doctor in doctor_appointments:
+            if len(doctor_appointments[doctor]) > MAX_APPOINTMENTS_PER_DOCTOR:
+                print("Doctor has reached the appointment limit.")
+                messagebox.showerror("Appointment Limit Exceeded", "The doctor has reached the maximum appointment limit.")
+                return False
+
         cursor.execute(query, values)
         mydb.commit()
-        print("Data saved successfully:", values)
+        print("Data saved successfully:", values)  # Add a debugging print statement
+
+        # Add the appointment to the doctor's list
+        if doctor not in doctor_appointments:
+            doctor_appointments[doctor] = [appointment_info]
+        else:
+            doctor_appointments[doctor].append(appointment_info)
+
+        # Display a success message
         messagebox.showinfo("Appointment Scheduled", "Appointment scheduled successfully!")
         return True
     except mysql.connector.Error as e:
@@ -125,10 +159,8 @@ def save_appointment_to_database(appointment_info):
         return False
 
 
+
 login_window = None
-
-
-################################################################################################
 
 
 def create_login_box(event=None):
@@ -199,6 +231,12 @@ def create_signup_box():
     login_page_button = tk.Label(signup_box, text="Already have an account? Log in here.", fg='blue', cursor='hand2')
     login_page_button.bind("<Button-1>", create_login_box)
     login_page_button.pack()
+
+
+def is_valid_email(email):
+    # Define a regular expression pattern to validate Gmail addresses
+    gmail_pattern = r'^[\w\.-]+@gmail\.com$'
+    return bool(re.match(gmail_pattern, email))
 
 
 def create_admin_login_box():
@@ -283,7 +321,7 @@ def signup():
     if  "@gmail.com" not in email:
         messagebox.showerror("Invalid Email", "Please enter a valid Gmail address.")
         return
-    elif full_name and age and sex and email and password:
+    if full_name and age and sex and email and password:
         if insert_users_into_db(full_name, age, sex, email, password):
             messagebox.showinfo("Signup Successful", "Account created successfully!")
             appointment_window()
@@ -362,10 +400,11 @@ def appointment_window():
 
     hide_login_box()
 
+    
     def schedule_appointment():
         global appointments
         global date_entry
-        patient_name = full_name_entry.get()
+        patient_name = name_entry.get()
         age = age_entry.get()
         contact_number = contact_entry.get()
         sex = sex_var.get()
@@ -373,6 +412,7 @@ def appointment_window():
         selected_slot = slot_var.get()
         appointment_date_str = date_entry.get_date()
         selected_reason = reasons_var.get()
+        patient_disease = disease_entry.get()
 
         # Convert appointment_date_str from '11/10/23' to '%Y-%m-%d' format
         appointment_date_obj = datetime.strptime(appointment_date_str, '%m/%d/%y')
@@ -396,7 +436,8 @@ def appointment_window():
                 "Appointment Date": formatted_appointment_date,
                 "Appointment Time": selected_slot,
                 "Reason": selected_reason,
-                "Amount": amount
+                "Amount": amount,
+                "Disease": patient_disease
             }    
 
             # Call the function to save the appointment to the database
@@ -407,17 +448,29 @@ def appointment_window():
         else:
             messagebox.showerror("Invalid Information", "Please fill in all required fields.")
 
-    if logged_in_user_info["full_name"]:
-        full_name_entry.insert(0, logged_in_user_info["full_name"])
-    if logged_in_user_info["age"]:
-        age_entry.insert(0, logged_in_user_info["age"])
-    if logged_in_user_info["sex"]:
-        sex_var.set(logged_in_user_info["sex"])
+    name_label = tk.Label(appointment_window, text="Name:")
+    name_label.pack()
+    name_entry = tk.Entry(appointment_window)
+    name_entry.pack()
+
+    age_label = tk.Label(appointment_window, text="Age:")
+    age_label.pack()
+    age_entry = tk.Entry(appointment_window)
+    age_entry.pack()
 
     contact_label = tk.Label(appointment_window, text="Contact Number:")
     contact_label.pack()
     contact_entry = tk.Entry(appointment_window)
     contact_entry.pack()
+
+    sex_label = tk.Label(appointment_window, text="Sex:")
+    sex_label.pack()
+    sex_var = tk.StringVar()
+    sex_var.set("Male")
+    sex_radio_male = tk.Radiobutton(appointment_window, text="Male", variable=sex_var, value="Male")
+    sex_radio_female = tk.Radiobutton(appointment_window, text="Female", variable=sex_var, value="Female")
+    sex_radio_male.pack()
+    sex_radio_female.pack()
 
     reasons_label = tk.Label(appointment_window, text="Reason of Appointment:")
     reasons_label.pack()
@@ -427,6 +480,11 @@ def appointment_window():
     reasons_radio_medication = tk.Radiobutton(appointment_window, text="Medication", variable=reasons_var, value="Medication")
     reasons_radio_checkup.pack()
     reasons_radio_medication.pack()
+
+    disease_label = tk.Label(appointment_window, text="Patient's Disease:")
+    disease_label.pack()
+    disease_entry = tk.Entry(appointment_window)
+    disease_entry.pack()
 
     # Create a dictionary to store doctors and their available slots
     doctors = {
@@ -441,6 +499,7 @@ def appointment_window():
     doctor_var = tk.StringVar(value=list(doctors.keys())[0])  # Set the default doctor
     doctor_option_menu = tk.OptionMenu(appointment_window, doctor_var, *doctors.keys())
     doctor_option_menu.pack()
+
 
     def update_slot_options(*args):
         selected_doctor = doctor_var.get()
@@ -464,10 +523,7 @@ def appointment_window():
 
     schedule_button = tk.Button(appointment_window, text="Schedule Appointment and Print Summary", command=schedule_appointment)
     schedule_button.pack()
-
-    # Create a button to go back to the main window
-    back_button = tk.Button(appointment_frame, text="Back to Main", command=show_main_window)
-    back_button.pack()
+    
 
     # Make sure to destroy the appointment frame properly when it's closed
     appointment_window.protocol("WM_DELETE_WINDOW", show_main_window)
@@ -488,35 +544,123 @@ def close_appointment_window():
     appointment_window.destroy()
 
 
+# Function to generate PDF report
+def generate_pdf_report(appointment_info):
+    pdf_filename = "appointment_summary.pdf"
+    c = canvas.Canvas(pdf_filename, pagesize=letter)
+
+    # Set the title for the PDF
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(100, 750, "Appointment Summary")
+
+    # Add appointment information to the PDF
+    c.setFont("Helvetica", 12)
+    y_coordinate = 700
+    for key, value in appointment_info.items():
+        appointment_text = f"{key}: {value}"
+        c.drawString(100, y_coordinate, appointment_text)
+        y_coordinate -= 20
+
+    # Save the PDF
+    c.showPage()
+    c.save()
+
+    # Display a message when the PDF is generated
+    messagebox.showinfo("PDF Generated", "Appointment summary PDF generated successfully!")
+
+def on_generate_pdf_click():
+    # Get values from entry fields
+    name_value = name_var.get()
+    date_value = date_var.get()
+    time_value = time_var.get()
+
+    # Check if any field is empty
+    if not all((name_value, date_value, time_value)):
+        messagebox.showwarning("Missing Information", "Please fill in all fields.")
+        return
+
+    # Create a dictionary with appointment information
+    appointment_info = {
+        "Name": name_value,
+        "Date": date_value,
+        "Time": time_value
+    }
+
+    # Call the function to generate the PDF
+    generate_pdf_report(appointment_info)
+
+
 def show_appointment_summary(appointment_info):
+    global login_box, appointment_window, root
+
     summary_window = tk.Toplevel(root)
     summary_window.geometry("700x500")
     summary_window.title("Appointment Summary")
 
     for key, value in appointment_info.items():
         if key == "Appointment Date":
-            # Format the date to display only the date portion (e.g., 2023-01-01)
             formatted_date = value.split()[0]
             label = tk.Label(summary_window, text=f"{key}: {formatted_date}")
         else:
             label = tk.Label(summary_window, text=f"{key}: {value}")
         label.pack()
 
-    # Insert the appointment information into the database
-    query = "INSERT INTO appointments (patient_name, age, contact_number, sex, reason, doctor, appointment_time, appointment_date, amount) " \
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
-    cursor.execute(query, (patient_name, age, contact_number, sex, selected_reason, selected_doctor, appointment_time, appointment_date, amount))
-    mydb.commit()
+    # Create a button to print and save the summary
+    print_summary_button = tk.Button(summary_window, text="Print Summary and Save to File", command=lambda: save_summary_to_file(appointment_info))
+    print_summary_button.pack()
 
-    # Close the appointment window after displaying the summary
-    appointment_window.destroy()
+    # Create an "Update" button
+    update_button = tk.Button(summary_window, text="Update Appointment", command=lambda: show_update_window(appointment_info))
+    update_button.pack()
+
+    root.withdraw()
+
+def show_update_window(old_appointment_info):
+    global login_box, appointment_window, root
+
+    update_window = tk.Toplevel(root)
+    update_window.geometry("400x300")
+    update_window.title("Update Appointment")
+
+    # Add Entry widgets for updating appointment information
+    new_name_entry = tk.Entry(update_window, width=30)
+    new_name_entry.insert(0, old_appointment_info["Name"])
+    new_name_entry.pack()
+
+    # Add other Entry widgets for other fields...
+
+    # Create a button to update the appointment
+    update_appointment_button = tk.Button(update_window, text="Update", command=lambda: update_appointment(
+        old_appointment_info,
+        new_name_entry.get(),
+        # Get values from other Entry widgets...
+    ))
+    update_appointment_button.pack()
+
+def update_appointment(old_appointment_info, new_name, new_age, new_contact_number, new_sex, new_selected_reason, new_selected_doctor, new_appointment_time, new_appointment_date, new_amount, new_disease):
+    global login_box, appointment_window, root
+
+    try:
+        update_query = '''
+        UPDATE appointments
+        SET patient_name = %s, age = %s, contact_number = %s, sex = %s, reason = %s, doctor = %s, appointment_time = %s, appointment_date = %s, amount = %s, disease = %s
+        WHERE patient_name = %s
+        '''
+        cursor.execute(update_query, (new_name, new_age, new_contact_number, new_sex, new_selected_reason, new_selected_doctor, new_appointment_time, new_appointment_date, new_amount, new_disease, old_appointment_info["Name"]))
+        mydb.commit()
+
+        messagebox.showinfo("Success", "Appointment updated successfully.")
+    except Exception as e:
+        mydb.rollback()
+        print(f"Error updating appointment: {str(e)}")
+        messagebox.showerror("Error", "Failed to update appointment.")
+
+    # Close the update window after updating the appointment
     root.deiconify()
 
-#################################################################################################
+
 
 # Create a dictionary to store doctors and their available slots
-
-
 doctors = {
     "Dra. Dalusung": ["9:00 AM - 10:00 AM", "2:00 PM - 3:00 PM"],
     "Dra. Festejo": ["10:00 AM - 11:00 AM", "3:00 PM - 4:00 PM"],
@@ -672,6 +816,45 @@ def doctor_window():
 
     doctor_window.mainloop()
 
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, 'Appointment Summary', 0, 1, 'C')
+
+    def chapter_title(self, title):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, title, 0, 1, 'L')
+        self.ln(4)
+
+    def chapter_body(self, body):
+        self.set_font('Arial', '', 12)
+        self.multi_cell(0, 10, body)
+        self.ln()
+
+def save_summary_to_file(appointment_info):
+    # Open a file dialog to choose the save location and filename
+    file_path = filedialog.asksaveasfilename(defaultextension=".pdf",
+                                               filetypes=[("PDF files", "*.pdf")],
+                                               title="Save Appointment Summary As")
+
+    if file_path:
+        try:
+            pdf = PDF()
+            pdf.add_page()
+
+        
+            pdf.chapter_body("______________________________________________________________________________")
+
+            # Write appointment information to PDF
+            for key, value in appointment_info.items():
+                pdf.chapter_body(f"{key}: {value}")
+
+            pdf.output(file_path)
+            messagebox.showinfo("Save Successful", "Appointment summary saved successfully!")
+        except Exception as e:
+            print("Error while saving appointment summary:", str(e))
+            messagebox.showerror("Save Error", "Failed to save appointment summary.")
+
 
 def show_main_window():
     # Show the main window again
@@ -685,7 +868,7 @@ def show_main_window():
 
 root = tk.Tk()
 root.geometry("700x500")
-root.title("TCNR's Hospital Management System")
+root.title("Hospital Management System")
 
 
 # Load and display the background image
