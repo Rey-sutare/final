@@ -1,4 +1,3 @@
-#red dots are new code lines 
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
@@ -11,9 +10,10 @@ from tkinter import Tk, Label, Button, StringVar, Entry, messagebox
 from tkcalendar import Calendar
 from datetime import datetime
 from fpdf import FPDF
+from collections import defaultdict
 
-# Maximum appointments per doctor
-MAX_APPOINTMENTS_PER_DOCTOR = 20  # You can adjust this value as needed
+# Maximum appointments per doctor's slot
+MAX_APPOINTMENTS_PER_SLOT = 2
 
 # Declare global variables
 search_date_entry = None
@@ -31,11 +31,12 @@ age = None
 contact_number = None
 sex = None
 selected_reason = None
+disease = None
 selected_doctor = None
 appointment_time = None
 appointment_date = None
 amount = None
-disease = None
+
 
 doctor_appointments = {}  # Dictionary to store doctor appointments and their counts
 
@@ -50,6 +51,8 @@ mydb = mysql.connector.connect(
 
 # Create a cursor for executing SQL queries
 cursor = mydb.cursor()
+    
+
 
 # Function to insert a new user into the database during signup
 def insert_users_into_db(full_name, age, sex, email, password):
@@ -82,7 +85,6 @@ def check_login_credentials(email, password):
     result = cursor.fetchone()
     return result is not None
 
-
 def check_admin_login_credentials(email, password):
     try:
         query = "SELECT * FROM admins WHERE email = %s AND password = %s"
@@ -109,14 +111,67 @@ def get_appointments_for_doctor(doctor_id):
         return None
 
 
+def initialize_doctor_appointments():
+    global doctor_appointments
+    doctor_appointments = defaultdict(dict)
+
+    try:
+        query = "SELECT doctor, appointment_time, appointment_date FROM appointments"
+        cursor.execute(query)
+        appointments = cursor.fetchall()
+
+        for appointment in appointments:
+            doctor = appointment[0]
+            slot = appointment[1]
+            date = appointment[2]
+
+            if date not in doctor_appointments[doctor]:
+                doctor_appointments[doctor][date] = {slot: 1}
+            elif slot not in doctor_appointments[doctor][date]:
+                doctor_appointments[doctor][date][slot] = 1
+            else:
+                doctor_appointments[doctor][date][slot] += 1
+    except Exception as e:
+        print("Error while initializing doctor_appointments:", str(e))
+
+# Call the function to initialize doctor_appointments at the beginning of the program
+initialize_doctor_appointments()
+
+
 def save_appointment_to_database(appointment_info):
     try:
         # Reformat the appointment date to match the expected format ("%Y-%m-%d")
         appointment_date = datetime.strptime(appointment_info["Appointment Date"], "%Y-%m-%d")
         formatted_appointment_date = appointment_date.strftime("%Y-%m-%d")
 
-        
-        query = "INSERT INTO appointments (patient_name, age, contact_number, sex, reason, doctor, appointment_time, appointment_date, amount, disease) " \
+        query_existing = "SELECT COUNT(*) FROM appointments WHERE doctor = %s AND appointment_time = %s AND appointment_date = %s"
+        cursor.execute(query_existing, (appointment_info["Doctor"], appointment_info["Appointment Time"], formatted_appointment_date))
+        existing_count = cursor.fetchone()[0]
+
+        if existing_count >= MAX_APPOINTMENTS_PER_SLOT:
+            print("Doctor has reached the appointment limit for this slot and date.")
+            messagebox.showerror("Appointment Limit Exceeded", "The doctor has reached the maximum appointment limit for this slot and date.")
+            return False
+
+        # Check if the total appointments for the slot and date exceed the limit
+        total_appointments = doctor_appointments.get(appointment_info["Doctor"], {}).get(formatted_appointment_date, 0)
+        if total_appointments >= MAX_APPOINTMENTS_PER_SLOT:
+            print("Doctor has reached the total appointment limit for this slot and date.")
+            messagebox.showerror("Total Appointment Limit Exceeded", "The doctor has reached the total appointment limit for this slot and date.")
+            return False
+
+        if existing_count >= MAX_APPOINTMENTS_PER_SLOT:
+            print("Doctor has reached the appointment limit for this slot and date.")
+            messagebox.showerror("Appointment Limit Exceeded", "The doctor has reached the maximum appointment limit for this slot and date.")
+
+            # If total appointments are still within the limit, allow the user to schedule on another date
+            if total_appointments < MAX_APPOINTMENTS_PER_SLOT:
+                print("User can still schedule on other dates.")
+                return True
+            else:
+                return False
+
+        query = "INSERT INTO appointments (patient_name, age, contact_number, sex, reason, disease, doctor, appointment_time, appointment_date, amount) " \
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
         values = (
             appointment_info["Name"],
@@ -124,30 +179,27 @@ def save_appointment_to_database(appointment_info):
             appointment_info["Contact Number"],
             appointment_info["Sex"],
             appointment_info["Reason"],
+            appointment_info["Disease"],
             appointment_info["Doctor"],
             appointment_info["Appointment Time"],
             formatted_appointment_date,
-            appointment_info["Amount"],
-            appointment_info["Disease"]
+            appointment_info["Amount"]
         )
-        
-        # Check doctor appointment count here
+
+        # Update the doctor_appointments dictionary
         doctor = appointment_info["Doctor"]
-        if doctor in doctor_appointments:
-            if len(doctor_appointments[doctor]) > MAX_APPOINTMENTS_PER_DOCTOR:
-                print("Doctor has reached the appointment limit.")
-                messagebox.showerror("Appointment Limit Exceeded", "The doctor has reached the maximum appointment limit.")
-                return False
+        if doctor not in doctor_appointments:
+            doctor_appointments[doctor] = {formatted_appointment_date: {appointment_info["Appointment Time"]: 1}}
+        elif formatted_appointment_date not in doctor_appointments[doctor]:
+            doctor_appointments[doctor][formatted_appointment_date] = {appointment_info["Appointment Time"]: 1}
+        elif appointment_info["Appointment Time"] not in doctor_appointments[doctor][formatted_appointment_date]:
+            doctor_appointments[doctor][formatted_appointment_date][appointment_info["Appointment Time"]] = 1
+        else:
+            doctor_appointments[doctor][formatted_appointment_date][appointment_info["Appointment Time"]] += 1
 
         cursor.execute(query, values)
         mydb.commit()
         print("Data saved successfully:", values)  # Add a debugging print statement
-
-        # Add the appointment to the doctor's list
-        if doctor not in doctor_appointments:
-            doctor_appointments[doctor] = [appointment_info]
-        else:
-            doctor_appointments[doctor].append(appointment_info)
 
         # Display a success message
         messagebox.showinfo("Appointment Scheduled", "Appointment scheduled successfully!")
@@ -157,7 +209,6 @@ def save_appointment_to_database(appointment_info):
         mydb.rollback()
         messagebox.showerror("Error", "Failed to schedule the appointment. Please try again.")
         return False
-
 
 
 login_window = None
@@ -304,7 +355,16 @@ def login():
     password = password_entry.get()
     if email and password:
         if check_login_credentials(email, password):
-            appointment_window()
+            # Retrieve user information from the database based on the email
+            query = "SELECT full_name, age, sex FROM users WHERE email = %s"
+            cursor.execute(query, (email,))
+            user_info = cursor.fetchone()
+            
+            if user_info:
+                full_name, age, sex = user_info
+                appointment_window(full_name, age, sex)
+            else:
+                messagebox.showerror("Login Failed", "Invalid email or password")
         else:
             messagebox.showerror("Login Failed", "Invalid email or password")
     else:
@@ -315,12 +375,19 @@ def signup():
     global full_name, age, sex
     full_name = full_name_entry.get()
     age = age_entry.get()
+    
+    try:
+        age = int(age)  # Convert age to an integer
+    except ValueError:
+        messagebox.showerror("Invalid Age", "Please enter a valid age.")
+        return
+    
     sex = sex_var.get()
     email = email_entry.get()
     password = password_entry.get()
-    if  "@gmail.com" not in email:
-        messagebox.showerror("Invalid Email", "Please enter a valid Gmail address.")
-        return
+    
+    # Rest of the code remains the same
+
     if full_name and age and sex and email and password:
         if insert_users_into_db(full_name, age, sex, email, password):
             messagebox.showinfo("Signup Successful", "Account created successfully!")
@@ -373,13 +440,16 @@ def admin_logout():
     messagebox.showinfo("Admin Log Out", "Admin logged out successfully!")
     root.deiconify()
 
-# Dictionary to store appointments
+def open_search_window():
+    create_search_window()
 
+
+# Dictionary to store appointments
 
 appointments = {}
 
 
-def appointment_window():
+def appointment_window(full_name, age, sex):
     # Create an appointment frame within the main window
     global appointment_window  # Declare the appointment_window as global
     global appointments  # Declare appointments as global
@@ -388,9 +458,15 @@ def appointment_window():
     appointment_window.geometry("500x700")
     appointment_window.title("Appointment Scheduling")
 
+    full_name_entry.insert(0, full_name)  # Set the value of name_entry
+    age_entry.insert(0, age)  # Set the value of age_entry
+    sex_var.set(sex)
+
     # Create an appointment frame within the appointment window
     appointment_frame = tk.Frame(appointment_window, borderwidth=2, relief="ridge", padx=10, pady=10)
     appointment_frame.pack(padx=20, pady=20)
+
+    cursor = mydb.cursor()
 
     # Hide the main window
     root.withdraw()
@@ -399,13 +475,13 @@ def appointment_window():
         login_box.place_forget()
 
     hide_login_box()
-
     
     def schedule_appointment():
         global appointments
         global date_entry
-        patient_name = name_entry.get()
-        age = age_entry.get()
+        
+        patient_name = full_name_entry.get()
+        patient_age = age_entry.get()
         contact_number = contact_entry.get()
         sex = sex_var.get()
         selected_doctor = doctor_var.get()
@@ -426,9 +502,9 @@ def appointment_window():
         elif selected_reason == "Medication":
             amount = "1,200 pesos"
 
-        if patient_name and age and contact_number and formatted_appointment_date:
+        if full_name and patient_age and contact_number and formatted_appointment_date:
             appointment_info = {
-                "Name": patient_name,
+                "Name": full_name,
                 "Age": age,
                 "Contact Number": contact_number,
                 "Sex": sex,
@@ -436,8 +512,8 @@ def appointment_window():
                 "Appointment Date": formatted_appointment_date,
                 "Appointment Time": selected_slot,
                 "Reason": selected_reason,
-                "Amount": amount,
-                "Disease": disease
+                "Disease": disease,
+                "Amount": amount
             }    
 
             # Call the function to save the appointment to the database
@@ -448,29 +524,10 @@ def appointment_window():
         else:
             messagebox.showerror("Invalid Information", "Please fill in all required fields.")
 
-    name_label = tk.Label(appointment_window, text="Name:")
-    name_label.pack()
-    name_entry = tk.Entry(appointment_window)
-    name_entry.pack()
-
-    age_label = tk.Label(appointment_window, text="Age:")
-    age_label.pack()
-    age_entry = tk.Entry(appointment_window)
-    age_entry.pack()
-
     contact_label = tk.Label(appointment_window, text="Contact Number:")
     contact_label.pack()
     contact_entry = tk.Entry(appointment_window)
     contact_entry.pack()
-
-    sex_label = tk.Label(appointment_window, text="Sex:")
-    sex_label.pack()
-    sex_var = tk.StringVar()
-    sex_var.set("Male")
-    sex_radio_male = tk.Radiobutton(appointment_window, text="Male", variable=sex_var, value="Male")
-    sex_radio_female = tk.Radiobutton(appointment_window, text="Female", variable=sex_var, value="Female")
-    sex_radio_male.pack()
-    sex_radio_female.pack()
 
     reasons_label = tk.Label(appointment_window, text="Reason of Appointment:")
     reasons_label.pack()
@@ -485,6 +542,7 @@ def appointment_window():
     disease_label.pack()
     disease_entry = tk.Entry(appointment_window)
     disease_entry.pack()
+
 
     # Create a dictionary to store doctors and their available slots
     doctors = {
@@ -523,7 +581,6 @@ def appointment_window():
 
     schedule_button = tk.Button(appointment_window, text="Schedule Appointment Summary", command=schedule_appointment)
     schedule_button.pack()
-    
 
     # Make sure to destroy the appointment frame properly when it's closed
     appointment_window.protocol("WM_DELETE_WINDOW", show_main_window)
@@ -544,43 +601,42 @@ def close_appointment_window():
     appointment_window.destroy()
 
 
-
-
 def show_appointment_summary(appointment_info):
+    close_appointment_window() 
     def update_appointment():
+        global update_window
+        global summary_window
         update_window = tk.Toplevel(root)
-        update_window.geometry("500x400")
+        update_window.geometry("500x700")
         update_window.title("Update Appointment")
 
-        # Create entry widgets for each field to allow editing
         updated_info = {}
-        for key, value in appointment_info.items():
+
+        for i, (key, value) in enumerate(appointment_info.items()):
             label = tk.Label(update_window, text=f"{key}:")
-            label.grid(row=len(update_window.grid_slaves()) + 1, column=0, pady=5)
+            label.grid(row=i, column=0, pady=5, padx=10, sticky=tk.W)
 
             entry = tk.Entry(update_window)
             entry.insert(0, value)
-            entry.grid(row=len(update_window.grid_slaves()) + 1, column=1, pady=5)
+            entry.grid(row=i, column=1, pady=5, padx=10, sticky=tk.W)
             updated_info[key] = entry
-
-        # Function to update the appointment in the database
+        
         def save_updated_appointment():
-            update_values = {key: entry.get() for key, entry in updated_info.items()}
+            update_values = {key: entry.get() if hasattr(entry, 'get') else entry for key, entry in updated_info.items()}
 
-            # Update the database with the modified information
-            update_query = "UPDATE appointments SET patient_name=%s, age=%s, contact_number=%s, sex=%s, reason=%s, doctor=%s, appointment_time=%s, appointment_date=%s, amount=%s, disease=%s WHERE appointment_id=%s"
+            update_query = "UPDATE appointments SET age=%s, contact_number=%s, sex=%s, reason=%s, disease=%s, doctor=%s, appointment_time=%s, appointment_date=%s, amount=%s WHERE patient_name=%s"
+
             update_values = (
-                update_values["Name"].get(),
-                update_values["Age"].get(),
-                update_values["Contact Number"].get(),
-                update_values["Sex"].get(),
-                update_values["Reason"].get(),
-                update_values["Doctor"].get(),
-                update_values["Appointment Time"].get(),
-                update_values["Appointment Date"].get(),
-                update_values["Amount"].get(),
-                update_values["Disease"].get(),
-                appointment_info["Appointment ID"],  # Assuming you have an appointment_id in your database
+                int(update_values["Age"]),
+                str(update_values["Contact Number"]),
+                str(update_values["Sex"]),
+                str(update_values["Reason"]),
+                str(update_values["Disease"]),
+                str(update_values["Doctor"]),
+                str(update_values["Appointment Time"]),
+                str(update_values["Appointment Date"]),
+                str(update_values["Amount"]),
+                str(update_values["Name"])
             )
 
             try:
@@ -593,31 +649,51 @@ def show_appointment_summary(appointment_info):
                 mydb.rollback()
                 messagebox.showerror("Error", "Failed to update the appointment. Please try again.")
 
-        # Create a button to save the updated information
         save_button = tk.Button(update_window, text="Save Update", command=save_updated_appointment)
-        save_button.grid(row=len(update_window.grid_slaves()) + 1, columnspan=2, pady=10)
+        save_button.grid(row=len(updated_info), columnspan=2, pady=10)
 
+        cancel_button = tk.Button(update_window, text="Cancel", command=update_window.destroy)
+        cancel_button.grid(row=len(updated_info) + 1, columnspan=2, pady=10)
+
+    
     summary_window = tk.Toplevel(root)
-    summary_window.geometry("700x500")
+    summary_window.geometry("500x700")
     summary_window.title("Appointment Summary")
 
-    for key, value in appointment_info.items():
+    for i, (key, value) in enumerate(appointment_info.items()):
         if key == "Appointment Date":
             formatted_date = value.split()[0]
-            label = tk.Label(summary_window, text=f"{key}: {formatted_date}")
+            label = tk.Label(summary_window, text=f"{key}:", font=("Helvetica", 12))
         else:
-            label = tk.Label(summary_window, text=f"{key}: {value}")
-        label.pack()
+            label = tk.Label(summary_window, text=f"{key}:", font=("Helvetica", 12, "bold"))
 
-    # Create an "Update Appointment" button
-    update_appointment_button = tk.Button(summary_window, text="Update Appointment", command=update_appointment)
-    update_appointment_button.pack()
+        label.grid(row=i, column=0, pady=5, padx=10, sticky=tk.W)
 
-    # Create a button to print and save the summary
-    print_summary_button = tk.Button(summary_window, text="Print Summary and Save to File", command=lambda: save_summary_to_file(appointment_info))
-    print_summary_button.pack()
+        detail_label = tk.Label(summary_window, text=f"{value}", font=("Helvetica", 12))
+        detail_label.grid(row=i, column=1, pady=5, padx=10, sticky=tk.W)
 
-    # ... (rest of the code remains unchanged)
+    button_width = 25
+    button_height = 1
+
+    update_appointment_button = tk.Button(summary_window, text="Update Appointment", bg='lightblue', command=update_appointment, width=button_width, height=button_height)
+    update_appointment_button.grid(row=len(appointment_info), column=0, pady=20, padx=10, sticky=tk.W)
+
+    print_summary_button = tk.Button(summary_window, text="Print Summary and Save to File", bg='lightblue', command=lambda: save_summary_to_file(appointment_info), width=button_width, height=button_height)
+    print_summary_button.grid(row=len(appointment_info), column=1, pady=20, padx=10, sticky=tk.W)
+
+    # Update the cancel button in your code to call the 'cancel_appointment' function
+    cancel_button = tk.Button(summary_window, text="Cancel Appointment", command=lambda: cancel_appointment("appointment_id"), bg='lightcoral', fg='black', width=button_width, height=button_height)
+    cancel_button.grid(row=len(appointment_info) + 1, column=0, pady=20, padx=10, sticky=tk.W)
+
+    # Create a "Close All" button
+    close_all_button = tk.Button(summary_window, text="Close All", command=stop_system, bg='lightgreen', fg='black', width=button_width, height=button_height)
+    close_all_button.grid(row=len(appointment_info) + 1, column=1, pady=20, padx=10, sticky=tk.W)
+
+    
+
+    
+   
+
 
 # Create a dictionary to store doctors and their available slots
 doctors = {
@@ -627,6 +703,36 @@ doctors = {
     "Dr. Sutare": ["11:00 AM - 12:00 PM", "7:00 PM - 8:00 PM"],
 }
 
+def cancel_appointment(appointment_id):
+    # Assuming 'appointment_id' is the unique identifier for the appointment in your database
+
+    # Create a delete query
+    delete_query = "DELETE FROM appointments WHERE Appointment_IdNo=%s"
+
+    # Create a tuple of values for the query
+    delete_values = (appointment_id,)
+
+    try:
+        # Execute the delete query
+        cursor.execute(delete_query, delete_values)
+
+        # Commit the changes to the database
+        mydb.commit()
+
+        # Show a success message
+        messagebox.showinfo("Appointment Canceled", "Appointment canceled successfully!")
+
+        # Close the update window (if it's open)
+        if update_window:
+            update_window.destroy()
+
+        # Close the summary window
+        summary_window.destroy()
+    except mysql.connector.Error as e:
+        # Handle any errors that may occur during the delete operation
+        print("Error while canceling the appointment:", str(e))
+        mydb.rollback()
+        messagebox.showerror("Error", "Failed to cancel the appointment. Please try again.")
 
 def create_search_window():
     global search_date_entry, search_time_var, search_doctor_var, search_results_tree
@@ -824,6 +930,8 @@ def show_main_window():
 
 # Create the main window
 
+def stop_system():
+    root.destroy()
 
 root = tk.Tk()
 root.geometry("700x500")
