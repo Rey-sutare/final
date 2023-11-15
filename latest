@@ -17,9 +17,13 @@ MAX_APPOINTMENTS_PER_SLOT = 2
 ###################################################################
 #                Declare global variables                         #
 ###################################################################
+# Declare global variables
+search_date_entry = None
 search_time_var = None
 search_doctor_var = None
 date_entry = None
+
+# Add these global variables at the beginning of your code
 name_var = None
 date_var = None
 time_var = None
@@ -442,7 +446,7 @@ def signup():
     if full_name and age and sex and email and password:
         if insert_users_into_db(full_name, age, sex, email, password):
             messagebox.showinfo("Signup Successful", "Account created successfully!")
-            appointment_window()
+            appointment_window('full_name', 'age','sex')
         else:
             messagebox.showerror("Signup Failed", "Failed to create an account. Please try again.")
     else:
